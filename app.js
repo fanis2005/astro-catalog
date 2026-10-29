@@ -692,7 +692,7 @@
   const PASSWORD = "AstroBanda@2026";
 
   function unlock() {
-    gate.classList.add("hidden");
+    if (gate) gate.classList.add("hidden");
     renderMoon();
     render();
   }
@@ -703,16 +703,18 @@
     gate.classList.remove("hidden");
   }
 
-  gateForm.addEventListener("submit", (e) => {
-    e.preventDefault();
-    if (gatePass.value === PASSWORD) {
-      sessionStorage.setItem(AUTH_KEY, "ok");
-      unlock();
-    } else {
-      gateErr.textContent = "Неверный пароль";
-      gatePass.value = "";
-    }
-  });
+  if (gateForm) {
+    gateForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      if (gatePass.value === PASSWORD) {
+        sessionStorage.setItem(AUTH_KEY, "ok");
+        unlock();
+      } else {
+        if (gateErr) gateErr.textContent = "Неверный пароль";
+        gatePass.value = "";
+      }
+    });
+  }
 
   $("#month").value = state.month;
 
@@ -727,5 +729,5 @@
 
   setInterval(() => { renderMoon(); if (state.tab === "now") render(); }, 60000);
 
-  window.__astro = { ninaBuild, moonInfo, sunAlt, nightWindow, objectWindow, planStore };
+  window.__astro = { ninaBuild, moonInfo, sunAlt, nightWindow, objectWindow, planStore, openDetail };
 })();
