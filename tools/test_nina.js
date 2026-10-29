@@ -24,8 +24,13 @@ const sandbox = {
   document: {
     querySelector: () => makeEl(),
     querySelectorAll: () => [],
+    getElementById: () => makeEl(),
     createElement: () => makeEl(),
     addEventListener() {},
+  },
+  sessionStorage: {
+    getItem: () => "ok",
+    setItem() {},
   },
   localStorage: {
     getItem: (k) => store[k] || null,

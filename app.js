@@ -508,9 +508,37 @@
     fr.readAsText(file);
   }
 
+  const gate = document.getElementById("gate");
+  const gateForm = document.getElementById("gate-form");
+  const gatePass = document.getElementById("gate-pass");
+  const gateErr = document.getElementById("gate-err");
+  const AUTH_KEY = "astro-auth";
+  const PASSWORD = "AstroBanda@2026";
+
+  function unlock() {
+    gate.classList.add("hidden");
+    renderMoon();
+    render();
+  }
+
+  if (sessionStorage.getItem(AUTH_KEY) === "ok") {
+    unlock();
+  } else if (gate) {
+    gate.classList.remove("hidden");
+  }
+
+  gateForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    if (gatePass.value === PASSWORD) {
+      sessionStorage.setItem(AUTH_KEY, "ok");
+      unlock();
+    } else {
+      gateErr.textContent = "Неверный пароль";
+      gatePass.value = "";
+    }
+  });
+
   $("#month").value = state.month;
-  renderMoon();
-  render();
 
   document.querySelectorAll(".tab[data-tab]").forEach((t) => t.addEventListener("click", () => { state.tab = t.dataset.tab; render(); }));
   $("#month").addEventListener("change", (e) => { state.month = +e.target.value; render(); });
