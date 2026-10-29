@@ -127,7 +127,22 @@ console.log(Object.entries(types).map(([k, v]) => `${v}× ${k.split(".").pop()}`
 fs.writeFileSync(path.join(site, "_tmp_plan.json"), JSON.stringify(seq, null, 2), "utf8");
 console.log("сохранено в _tmp_plan.json");
 
-const xml = A.buildXml(slots);
-console.log("XML:", xml.length, "байт, строк:", xml.split("\n").length);
-console.log(xml.split("\n").slice(0, 8).join("\n"));
-if (!xml.includes("<Exposure")) { console.error("в XML нет экспозиций!"); process.exit(1); }
+// проверка триггеров
+const trigs = { dither: 0, afTime: 0, afTemp: 0, runnerDither: 0, runnerAf: 0, badError: 0 };
+(function scan(o) {
+  if (!o || typeof o !== "object") return;
+  if (Array.isArray(o)) { o.forEach(scan); return; }
+  const t = o.$type || "";
+  if (t.includes("DitherAfterExposures")) trigs.dither++;
+  if (t.includes("AutofocusAfterTimeTrigger")) trigs.afTime++;
+  if (t.includes("AutofocusAfterTemperatureChangeTrigger")) trigs.afTemp++;
+  if (t.includes("SequenceItem.Guider.Dither,")) trigs.runnerDither++;
+  if (t.includes("SequenceItem.Autofocus.RunAutofocus,")) trigs.runnerAf++;
+  if ((t.includes(".Trigger.") || t.includes(".Conditions.")) && ("ErrorBehavior" in o)) trigs.badError++;
+  for (const v of Object.values(o)) scan(v);
+})(seq);
+console.log("триггеры:", JSON.stringify(trigs));
+if (trigs.dither !== 2 || trigs.afTime !== 2 || trigs.afTemp !== 2 || trigs.badError !== 0) {
+  console.error("ПРОБЛЕМА С ТРИГГЕРАМИ");
+  process.exit(1);
+}

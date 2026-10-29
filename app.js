@@ -320,7 +320,6 @@
         el("tbody", {}, ...rows)),
       el("div", { class: "row", style: "margin-top:14px" },
         el("button", { class: "tab active", onclick: () => downloadNina(slots) }, "скачать серию NINA (JSON)"),
-        el("button", { class: "tab", onclick: () => downloadXml(slots) }, "скачать XML"),
         el("button", { class: "tab", onclick: () => { planStore.set([]); render(); } }, "очистить план")
       )
     ];
@@ -385,6 +384,31 @@
       { ExposureTime: exp, Gain: 120, Offset: 20, Binning: binning(), ImageType: "LIGHT", ExposureCount: 0 },
       { parent: pid, name: null });
 
+    // триггеры серии: дитеринг каждые 3 кадра, автофокус по времени и по ΔT
+    const triggerRunner = (inner) => node("NINA.Sequencer.Container.SequentialContainer, NINA.Sequencer", {}, {
+      strategy: STRAT_SEQ, name: null, parent: false, container: true,
+      conditions: [], triggers: [], items: [inner],
+    });
+    const ditherTrigger = (pid) => node("NINA.Sequencer.Trigger.Guider.DitherAfterExposures, NINA.Sequencer",
+      {
+        AfterExposures: 3,
+        TriggerRunner: triggerRunner(() => node("NINA.Sequencer.SequenceItem.Guider.Dither, NINA.Sequencer", {}, { parent: true })),
+      },
+      { parent: pid, condTrigger: true });
+    const afTimeTrigger = (pid) => node("NINA.Sequencer.Trigger.Autofocus.AutofocusAfterTimeTrigger, NINA.Sequencer",
+      {
+        Amount: 60.0,
+        TriggerRunner: triggerRunner(() => node("NINA.Sequencer.SequenceItem.Autofocus.RunAutofocus, NINA.Sequencer", {}, { parent: true })),
+      },
+      { parent: pid, condTrigger: true });
+    const afTempTrigger = (pid) => node("NINA.Sequencer.Trigger.Autofocus.AutofocusAfterTemperatureChangeTrigger, NINA.Sequencer",
+      {
+        Amount: 1.0,
+        TriggerRunner: triggerRunner(() => node("NINA.Sequencer.SequenceItem.Autofocus.RunAutofocus, NINA.Sequencer", {}, { parent: true })),
+      },
+      { parent: pid, condTrigger: true });
+
+
     const startup = node("NINA.Sequencer.Container.ParallelContainer, NINA.Sequencer", {}, {
       strategy: STRAT_PAR, name: "Startup", parent: true, container: true, conditions: [], triggers: [],
       items: [
@@ -406,7 +430,7 @@
 
       const series = node("NINA.Sequencer.Container.SequentialContainer, NINA.Sequencer", {}, {
         strategy: STRAT_SEQ, name: `${o.name}: ${fname}, ${exp} s — до ${fmtHM(s.end)}`,
-        parent: true, container: true, triggers: [],
+        parent: true, container: true, triggers: [ditherTrigger, afTimeTrigger, afTempTrigger],
         conditions: [(pid) => node("NINA.Sequencer.Conditions.TimeCondition, NINA.Sequencer",
           { Hours: endH, Minutes: endM, MinutesOffset: 0, Seconds: 0, SelectedProvider: timeProvider() },
           { parent: pid, condTrigger: true })],
@@ -473,55 +497,6 @@
     const seq = ninaBuild(slots);
     const blob = new Blob([JSON.stringify(seq, null, 2)], { type: "application/json" });
     const a = el("a", { href: URL.createObjectURL(blob), download: "План ночи NINA.json" });
-    a.click();
-    URL.revokeObjectURL(a.href);
-  }
-
-  // ---------- XML-выгрузка ----------
-  function xmlEsc(s) {
-    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-  }
-
-  function buildXml(slots) {
-    const { night } = buildSchedule();
-    const L = [];
-    L.push('<?xml version="1.0" encoding="utf-8"?>');
-    L.push('<NinaSequence version="1.0" site="55.8N, 38.2E" field="3.19deg" pixelScale="3.8">');
-    L.push(`  <Night darkStart="${fmtHM(night.start)}" darkEnd="${fmtHM(night.end)}"/>`);
-    L.push('  <Startup>');
-    L.push('    <CoolCamera temperature="-20" durationMinutes="10"/>');
-    L.push('    <UnparkScope/>');
-    L.push('  </Startup>');
-    L.push('  <Targets>');
-    for (const s of slots) {
-      const o = s.o;
-      const fname = FILTER_NAME[o.filter] || "SV260";
-      const pos = FILTER_POS[fname] ?? 0;
-      const exp = FILTER_EXP[fname] || 120;
-      L.push(`    <Target name="${xmlEsc(o.alias || o.name)}" ra="${o.ra.toFixed(3)}" dec="${o.dec.toFixed(3)}" ` +
-             `start="${fmtHM(s.start)}" end="${fmtHM(s.end)}" maxAlt="${s.maxAlt.toFixed(1)}" type="${xmlEsc(o.type)}">`);
-      L.push(`      <Filter name="${xmlEsc(fname)}" position="${pos}"/>`);
-      L.push('      <Autofocus/>');
-      L.push('      <Center rotation="0"/>');
-      L.push('      <StartGuiding/>');
-      L.push(`      <Exposure seconds="${exp}" gain="120" offset="20" binning="1x1" imageType="LIGHT"/>`);
-      L.push('    </Target>');
-    }
-    L.push('  </Targets>');
-    L.push('  <End>');
-    L.push('    <StopGuiding/>');
-    L.push('    <ParkScope/>');
-    L.push('    <WarmCamera durationMinutes="20"/>');
-    L.push('    <DisconnectAll/>');
-    L.push('  </End>');
-    L.push('</NinaSequence>');
-    return L.join("\n");
-  }
-
-  function downloadXml(slots) {
-    const xml = buildXml(slots);
-    const blob = new Blob([xml], { type: "application/xml" });
-    const a = el("a", { href: URL.createObjectURL(blob), download: "План ночи NINA.xml" });
     a.click();
     URL.revokeObjectURL(a.href);
   }
@@ -601,5 +576,5 @@
 
   setInterval(() => { renderMoon(); if (state.tab === "now") render(); }, 60000);
 
-  window.__astro = { ninaBuild, buildXml, moonInfo, sunAlt, nightWindow, objectWindow, planStore };
+  window.__astro = { ninaBuild, moonInfo, sunAlt, nightWindow, objectWindow, planStore };
 })();
