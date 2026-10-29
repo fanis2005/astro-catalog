@@ -319,7 +319,8 @@
         el("thead", {}, el("tr", {}, ...["объект", "слот", "макс. высота", "фильтр", "длительность"].map((h) => el("th", {}, h)))),
         el("tbody", {}, ...rows)),
       el("div", { class: "row", style: "margin-top:14px" },
-        el("button", { class: "tab active", onclick: () => downloadNina(slots) }, "скачать серию NINA"),
+        el("button", { class: "tab active", onclick: () => downloadNina(slots) }, "скачать серию NINA (JSON)"),
+        el("button", { class: "tab", onclick: () => downloadXml(slots) }, "скачать XML"),
         el("button", { class: "tab", onclick: () => { planStore.set([]); render(); } }, "очистить план")
       )
     ];
@@ -476,6 +477,55 @@
     URL.revokeObjectURL(a.href);
   }
 
+  // ---------- XML-выгрузка ----------
+  function xmlEsc(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  function buildXml(slots) {
+    const { night } = buildSchedule();
+    const L = [];
+    L.push('<?xml version="1.0" encoding="utf-8"?>');
+    L.push('<NinaSequence version="1.0" site="55.8N, 38.2E" field="3.19deg" pixelScale="3.8">');
+    L.push(`  <Night darkStart="${fmtHM(night.start)}" darkEnd="${fmtHM(night.end)}"/>`);
+    L.push('  <Startup>');
+    L.push('    <CoolCamera temperature="-20" durationMinutes="10"/>');
+    L.push('    <UnparkScope/>');
+    L.push('  </Startup>');
+    L.push('  <Targets>');
+    for (const s of slots) {
+      const o = s.o;
+      const fname = FILTER_NAME[o.filter] || "SV260";
+      const pos = FILTER_POS[fname] ?? 0;
+      const exp = FILTER_EXP[fname] || 120;
+      L.push(`    <Target name="${xmlEsc(o.alias || o.name)}" ra="${o.ra.toFixed(3)}" dec="${o.dec.toFixed(3)}" ` +
+             `start="${fmtHM(s.start)}" end="${fmtHM(s.end)}" maxAlt="${s.maxAlt.toFixed(1)}" type="${xmlEsc(o.type)}">`);
+      L.push(`      <Filter name="${xmlEsc(fname)}" position="${pos}"/>`);
+      L.push('      <Autofocus/>');
+      L.push('      <Center rotation="0"/>');
+      L.push('      <StartGuiding/>');
+      L.push(`      <Exposure seconds="${exp}" gain="120" offset="20" binning="1x1" imageType="LIGHT"/>`);
+      L.push('    </Target>');
+    }
+    L.push('  </Targets>');
+    L.push('  <End>');
+    L.push('    <StopGuiding/>');
+    L.push('    <ParkScope/>');
+    L.push('    <WarmCamera durationMinutes="20"/>');
+    L.push('    <DisconnectAll/>');
+    L.push('  </End>');
+    L.push('</NinaSequence>');
+    return L.join("\n");
+  }
+
+  function downloadXml(slots) {
+    const xml = buildXml(slots);
+    const blob = new Blob([xml], { type: "application/xml" });
+    const a = el("a", { href: URL.createObjectURL(blob), download: "План ночи NINA.xml" });
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
   // ---------- init ----------
   function renderMoon() {
     const m = moonInfo(new Date());
@@ -551,5 +601,5 @@
 
   setInterval(() => { renderMoon(); if (state.tab === "now") render(); }, 60000);
 
-  window.__astro = { ninaBuild, moonInfo, sunAlt, nightWindow, objectWindow, planStore };
+  window.__astro = { ninaBuild, buildXml, moonInfo, sunAlt, nightWindow, objectWindow, planStore };
 })();

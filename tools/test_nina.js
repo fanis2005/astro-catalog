@@ -126,3 +126,8 @@ console.log(Object.entries(types).map(([k, v]) => `${v}× ${k.split(".").pop()}`
 
 fs.writeFileSync(path.join(site, "_tmp_plan.json"), JSON.stringify(seq, null, 2), "utf8");
 console.log("сохранено в _tmp_plan.json");
+
+const xml = A.buildXml(slots);
+console.log("XML:", xml.length, "байт, строк:", xml.split("\n").length);
+console.log(xml.split("\n").slice(0, 8).join("\n"));
+if (!xml.includes("<Exposure")) { console.error("в XML нет экспозиций!"); process.exit(1); }
