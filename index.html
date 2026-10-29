@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Каталог объектов — SV545 / SV605CC</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header>
+  <h1>Каталог объектов <span>·</span> сетап SV545 / SV605CC</h1>
+  <div class="sub">
+    203 мм f/4.5 · поле 3,19° · 3,8″/px · фильтры SV260 / LAIDA Ha-OIII / SII-OIII / UV-IR ·
+    широта 55,8° N, 38,2° E
+  </div>
+  <div class="sub moon" id="moon">Луна: …</div>
+
+  <div class="bar">
+    <label>месяц</label>
+    <select id="month">
+      <option value="1">январь</option><option value="2">февраль</option>
+      <option value="3">март</option><option value="4">апрель</option>
+      <option value="5">май</option><option value="6">июнь</option>
+      <option value="7">июль</option><option value="8">август</option>
+      <option value="9">сентябрь</option><option value="10">октябрь</option>
+      <option value="11">ноябрь</option><option value="12">декабрь</option>
+    </select>
+
+    <label>тип</label>
+    <select id="type">
+      <option value="">любой</option>
+      <option>эмиссионная</option>
+      <option>отражательная</option>
+      <option>планетарная</option>
+      <option>остаток сверхновой</option>
+      <option>галактика</option>
+      <option>группа галактик</option>
+      <option>взаимодействующие</option>
+      <option>рассеянное</option>
+      <option>шаровое</option>
+    </select>
+
+    <label>фильтр</label>
+    <select id="filter">
+      <option value="">любой</option>
+      <option>SV260</option>
+      <option>Ha-OIII</option>
+      <option>SII-OIII</option>
+      <option>UV/IR</option>
+    </select>
+
+    <label><input type="checkbox" id="suited"> только подходящие сетапу</label>
+
+    <input type="search" id="q" placeholder="поиск: имя, созвездие, заметка…">
+
+    <div class="tabs">
+      <button class="tab active" data-tab="now">Сейчас</button>
+      <button class="tab" data-tab="month">Календарь</button>
+      <button class="tab" data-tab="plan">План ночи</button>
+      <button class="tab" data-tab="all">Все объекты</button>
+    </div>
+  </div>
+
+  <div class="bar">
+    <label>статусы:</label>
+    <button class="tab" id="export">экспорт JSON</button>
+    <label class="tab" style="cursor:pointer">импорт JSON<input type="file" id="import" accept=".json" hidden></label>
+  </div>
+</header>
+
+<main id="view"></main>
+
+<footer>
+  Данные: собственный каталог, видимость рассчитана для 55,8° N / 38,2° E (астрономическая ночь, Солнце ниже −18°).
+  Статусы и заметки хранятся в браузере (localStorage) и переносятся через экспорт/импорт JSON.
+</footer>
+
+<script src="data/catalog.js" charset="utf-8"></script>
+<script src="data/shots.js" charset="utf-8"></script>
+<script src="app.js" charset="utf-8"></script>
+</body>
+</html>
