@@ -254,3 +254,124 @@ a:hover { text-decoration: underline; }
 }
 .gate-box button { align-self: flex-start; }
 .gate-err { color: var(--bad) !important; min-height: 16px; }
+
+/* ---------- детальное окно ---------- */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(5, 8, 12, .72);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2vh 2vw;
+}
+
+.modal {
+  width: 75vw;
+  height: 75vh;
+  min-width: 320px;
+  min-height: 300px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .55);
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+
+.modal-head .name { font-size: 16px; }
+
+.modal-x {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--dim);
+  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.modal-x:hover { color: var(--text); border-color: var(--accent); }
+
+.modal-body {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  min-height: 0;
+  flex: 1;
+}
+
+.modal-img {
+  background: #080c11;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.modal-img img { max-width: 100%; max-height: 100%; object-fit: contain; }
+
+.modal-info {
+  padding: 14px 16px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.section-title {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  color: var(--dim);
+  margin-top: 4px;
+}
+
+.months {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 84px;
+  padding: 4px 0;
+}
+
+.mbar {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 3px;
+}
+
+.mbar i {
+  width: 100%;
+  background: #2f4258;
+  border-radius: 2px 2px 0 0;
+  display: block;
+  min-height: 1px;
+}
+
+.mbar i.good { background: var(--good); }
+.mbar i.mid { background: var(--warn); }
+.mbar i.bad { background: #33404f; }
+.mbar span { font-size: 9px; color: var(--dim); }
+
+@media (max-width: 900px) {
+  .modal { width: 96vw; height: 92vh; }
+  .modal-body { grid-template-columns: 1fr; grid-template-rows: 40% 60%; }
+}

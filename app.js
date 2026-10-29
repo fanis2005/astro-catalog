@@ -144,12 +144,108 @@
   }
 
   function thumb(o) {
-    return el("div", { class: "thumb" },
+    return el("div", { class: "thumb", title: "открыть детали", onclick: () => openDetail(o) },
       el("img", { src: `img/${o.id}.jpg`, alt: o.name, onerror: "this.remove()" }),
       el("div", { class: "ph", html: `${o.type}<br>${o.constellation}` }),
       el("div", { class: "badge", html: `${o.size}′ · ${o.mag}ᵐ` })
     );
   }
+
+  // ---------- детальное окно ----------
+  function closeModal() {
+    const m = document.getElementById("modal-backdrop");
+    if (m) m.remove();
+  }
+
+  function openDetail(o) {
+    closeModal();
+    const now = new Date();
+    const { alt, az } = altAz(o.ra, o.dec, now);
+    const moon = moonInfo(now);
+    const sep = angularSep(o.ra, o.dec, moon.ra, moon.dec);
+    const info = shotsFor(o);
+
+    const raH = Math.floor(o.ra / 15);
+    const raM = Math.floor(((o.ra / 15) % 1) * 60);
+    const raS = Math.round(((((o.ra / 15) % 1) * 60) % 1) * 60);
+    const dd = Math.floor(Math.abs(o.dec));
+    const dm = Math.floor((Math.abs(o.dec) % 1) * 60);
+    const raStr = `${raH}h ${String(raM).padStart(2, "0")}m ${String(raS).padStart(2, "0")}s`;
+    const decStr = `${o.dec < 0 ? "−" : "+"}${dd}° ${String(dm).padStart(2, "0")}′`;
+
+    const months = o.months.map((mm) => {
+      const h = Math.max(1, Math.min(100, ((mm.max_alt + 20) / 110) * 100));
+      const cls = mm.max_alt >= 60 ? "good" : mm.max_alt >= 30 ? "mid" : "bad";
+      return el("div", { class: "mbar", title: `${MONTHS[mm.m - 1]}: ${mm.max_alt}°, ${mm.hours30} ч` },
+        el("i", { class: cls, style: `height:${h}%` }),
+        el("span", {}, MONTHS[mm.m - 1].slice(0, 1)));
+    });
+
+    const inPlan = planStore.has(o.id);
+    const planBtn = el("button", {
+      class: "tab" + (inPlan ? " active" : ""),
+      onclick: (e) => {
+        planStore.toggle(o.id);
+        e.target.classList.toggle("active");
+        e.target.textContent = planStore.has(o.id) ? "в плане ✓" : "+ в план";
+      },
+    }, inPlan ? "в плане ✓" : "+ в план");
+
+    const statusSel = el("select", { onchange: (e) => store.put(o.id, { status: e.target.value }) });
+    for (const s of ["planned", "todo", "done"]) {
+      const st = store.one(o.id);
+      const op = el("option", { value: s }, { planned: "в плане", todo: "хочу снять", done: "снято" }[s]);
+      if (st.status === s) op.selected = true;
+      statusSel.append(op);
+    }
+
+    const note = el("textarea", { class: "note", rows: "3", placeholder: "заметка: фильтр, выдержка, ссылка на папку…" });
+    note.value = store.one(o.id).note || "";
+    note.addEventListener("change", (e) => store.put(o.id, { note: e.target.value }));
+
+    const backdrop = el("div", { class: "modal-backdrop", id: "modal-backdrop" });
+    backdrop.addEventListener("click", (e) => { if (e.target === backdrop) closeModal(); });
+
+    const img = el("img", { src: `img/${o.id}.jpg`, alt: o.name, onerror: "this.style.display='none'" });
+
+    const modal = el("div", { class: "modal" },
+      el("div", { class: "modal-head" },
+        el("div", { class: "name" }, o.name),
+        el("span", { class: "pill" }, o.constellation),
+        el("span", { class: "pill" }, o.type),
+        el("button", { class: "modal-x", onclick: closeModal }, "✕")
+      ),
+      el("div", { class: "modal-body" },
+        el("div", { class: "modal-img" }, img),
+        el("div", { class: "modal-info" },
+          el("div", { class: "row" },
+            el("span", { class: "pill" }, `${o.size}′`),
+            el("span", { class: "pill" }, `${o.mag}ᵐ`),
+            el("span", { class: "pill" }, `фильтр ${o.filter}`),
+            el("span", { class: "pill" }, `сложность ${"★".repeat(o.difficulty)}${"☆".repeat(3 - o.difficulty)}`)
+          ),
+          el("div", { class: "meta", html: `RA ${raStr} · Dec ${decStr} (J2000)` }),
+          el("div", { class: "meta", html: `сейчас: ${fmtAlt(alt)} · азимут ${az.toFixed(0)}° · Луна ${(moon.illum * 100).toFixed(0)}% на ${moon.alt >= 0 ? "+" : ""}${moon.alt.toFixed(0)}°, до объекта ${sep.toFixed(0)}°` }),
+          info ? el("div", { class: "meta done", html: "✔ снято: " + shotsLine(info) }) : el("div", { class: "meta" }, "ещё не снималось"),
+          el("div", { class: "section-title" }, "Видимость по месяцам"),
+          el("div", { class: "months" }, ...months),
+          el("div", { class: "meta" }, o.note),
+          el("div", { class: "row" }, planBtn, statusSel),
+          note,
+          el("div", { class: "row" },
+            el("a", { href: `https://www.legacysurvey.org/viewer?ra=${o.ra.toFixed(3)}&dec=${o.dec.toFixed(3)}&zoom=12`, target: "_blank", rel: "noopener" }, "Aladin/LS"),
+            el("a", { href: `https://simbad.u-strasbg.fr/simbad/sim-coo?Coord=${o.ra.toFixed(3)}%20${o.dec.toFixed(3)}`, target: "_blank", rel: "noopener" }, "SIMBAD"),
+            el("a", { href: `https://telescopius.com/deep-sky/search?ra=${o.ra.toFixed(3)}&de=${o.dec.toFixed(3)}`, target: "_blank", rel: "noopener" }, "Telescopius")
+          )
+        )
+      )
+    );
+
+    backdrop.append(modal);
+    document.body.append(backdrop);
+  }
+
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal(); });
 
   function card(o, alt, az) {
     const st = store.one(o.id);
