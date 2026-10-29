@@ -470,7 +470,7 @@
       if (opts.conditions) d.Conditions = { "$id": nid(), "$type": COL_COND, "$values": opts.conditions.map((f) => f(id)) };
       if (opts.items) d.Items = { "$id": nid(), "$type": COL_ITEMS, "$values": opts.items.map((f) => f(id)) };
       if (opts.triggers) d.Triggers = { "$id": nid(), "$type": COL_TRIG, "$values": opts.triggers.map((f) => f(id)) };
-      if (opts.container) d.IsExpanded = true;
+      if (opts.container) d.IsExpanded = opts.expanded !== false;
       if (!opts.condTrigger) { d.ErrorBehavior = 0; d.Attempts = 1; }
       return d;
     }
@@ -552,8 +552,63 @@
       }));
     }
 
+    // ---------- калибровка ----------
+    const FLAT_COUNT = 30;
+    const DARK_COUNT = 20;
+    const usedFilters = [...new Set(slots.map((s) => FILTER_NAME[s.o.filter] || "SV260"))];
+    const usedExps = [...new Set(slots.map((s) => FILTER_EXP[FILTER_NAME[s.o.filter] || "SV260"] || 120))];
+
+    const autoFlat = (fname) => node("NINA.Sequencer.SequenceItem.FlatDevice.AutoExposureFlat, NINA.Sequencer",
+      {
+        KeepPanelClosed: true, MinExposure: 0.0, MaxExposure: 15.0,
+        HistogramTargetPercentage: 0.5, HistogramTolerancePercentage: 0.1,
+      },
+      {
+        name: `Флэты ${fname}`, strategy: STRAT_SEQ, parent: true, container: true, expanded: false,
+        conditions: [], triggers: [],
+        items: [
+          () => node("NINA.Sequencer.SequenceItem.FlatDevice.CloseCover, NINA.Sequencer", {}, { parent: true }),
+          () => node("NINA.Sequencer.SequenceItem.FlatDevice.ToggleLight, NINA.Sequencer", { OnOff: true }, { parent: true }),
+          () => node("NINA.Sequencer.SequenceItem.FilterWheel.SwitchFilter, NINA.Sequencer",
+            { Filter: filterInfo(fname, FILTER_POS[fname] ?? 0) }, { parent: true }),
+          () => node("NINA.Sequencer.SequenceItem.FlatDevice.SetBrightness, NINA.Sequencer", { Brightness: 100 }, { parent: true }),
+          () => node("NINA.Sequencer.Container.SequentialContainer, NINA.Sequencer", {}, {
+            strategy: STRAT_SEQ, name: null, parent: true, container: true, triggers: [],
+            conditions: [(pid) => node("NINA.Sequencer.Conditions.LoopCondition, NINA.Sequencer",
+              { CompletedIterations: 0, Iterations: FLAT_COUNT }, { parent: pid, condTrigger: true })],
+            items: [() => node("NINA.Sequencer.SequenceItem.Imaging.TakeExposure, NINA.Sequencer",
+              { ExposureTime: 0.0, Gain: -1, Offset: -1, Binning: binning(), ImageType: "FLAT", ExposureCount: 0 }, { parent: true })],
+          }),
+          () => node("NINA.Sequencer.SequenceItem.FlatDevice.ToggleLight, NINA.Sequencer", { OnOff: false }, { parent: true }),
+          () => node("NINA.Sequencer.SequenceItem.FlatDevice.OpenCover, NINA.Sequencer", {}, { parent: true }),
+        ],
+      });
+
+    const darkSeries = (exp) => node("NINA.Sequencer.Container.SequentialContainer, NINA.Sequencer", {}, {
+      strategy: STRAT_SEQ, name: `Дарки: ${exp} s × ${DARK_COUNT}`, parent: true, container: true, triggers: [],
+      conditions: [(pid) => node("NINA.Sequencer.Conditions.LoopCondition, NINA.Sequencer",
+        { CompletedIterations: 0, Iterations: DARK_COUNT }, { parent: pid, condTrigger: true })],
+      items: [() => node("NINA.Sequencer.SequenceItem.Imaging.TakeExposure, NINA.Sequencer",
+        { ExposureTime: exp, Gain: 120, Offset: 20, Binning: binning(), ImageType: "DARK", ExposureCount: 0 }, { parent: true })],
+    });
+
+    const calib = node("NINA.Sequencer.Container.SequentialContainer, NINA.Sequencer", {}, {
+      strategy: STRAT_SEQ, name: "Калибровка: флэты и дарки", parent: true, container: true, conditions: [], triggers: [],
+      items: [
+        () => node("NINA.Sequencer.SequenceItem.Guider.StopGuiding, NINA.Sequencer", {}, { parent: true }),
+        () => node("NINA.Sequencer.SequenceItem.FlatDevice.CloseCover, NINA.Sequencer", {}, { parent: true }),
+        () => node("NINA.Sequencer.SequenceItem.FlatDevice.SetBrightness, NINA.Sequencer", { Brightness: 100 }, { parent: true }),
+        ...usedFilters.map((f) => () => autoFlat(f)),
+        () => node("NINA.Sequencer.SequenceItem.FlatDevice.ToggleLight, NINA.Sequencer", { OnOff: false }, { parent: true }),
+        () => node("NINA.Sequencer.SequenceItem.FlatDevice.SetBrightness, NINA.Sequencer", { Brightness: 0 }, { parent: true }),
+        () => node("NINA.Sequencer.SequenceItem.FlatDevice.CloseCover, NINA.Sequencer", {}, { parent: true }),
+        ...usedExps.map((e) => () => darkSeries(e)),
+      ],
+    });
+
     const targetArea = node("NINA.Sequencer.Container.TargetAreaContainer, NINA.Sequencer", {}, {
-      strategy: STRAT_SEQ, name: "Цели", parent: true, container: true, conditions: [], triggers: [], items: targetItems,
+      strategy: STRAT_SEQ, name: "Цели", parent: true, container: true, conditions: [], triggers: [],
+      items: [...targetItems, () => calib],
     });
 
     const endArea = node("NINA.Sequencer.Container.EndAreaContainer, NINA.Sequencer", {}, {

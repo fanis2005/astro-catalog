@@ -146,3 +146,22 @@ if (trigs.dither !== 2 || trigs.afTime !== 2 || trigs.afTemp !== 2 || trigs.badE
   console.error("ПРОБЛЕМА С ТРИГГЕРАМИ");
   process.exit(1);
 }
+
+// проверка калибровки
+const cal = { flats: 0, flatFrames: 0, darks: 0, darkFrames: 0, loops: 0, filterSwitches: 0 };
+(function scan2(o) {
+  if (!o || typeof o !== "object") return;
+  if (Array.isArray(o)) { o.forEach(scan2); return; }
+  const t = o.$type || "";
+  if (t.includes("FlatDevice.AutoExposureFlat")) cal.flats++;
+  if (t.includes("LoopCondition")) cal.loops++;
+  if (t.includes("SwitchFilter")) cal.filterSwitches++;
+  if (t.includes("Imaging.TakeExposure") && o.ImageType === "FLAT") cal.flatFrames++;
+  if (t.includes("Imaging.TakeExposure") && o.ImageType === "DARK") cal.darkFrames++;
+  for (const v of Object.values(o)) scan2(v);
+})(seq);
+console.log("калибровка:", JSON.stringify(cal));
+if (cal.flats < 1 || cal.flatFrames < 1 || cal.darkFrames < 1) {
+  console.error("ПРОБЛЕМА С КАЛИБРОВКОЙ");
+  process.exit(1);
+}
