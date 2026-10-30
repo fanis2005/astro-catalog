@@ -350,21 +350,53 @@
     return el("div", { class: "night-chart", html: svg });
   }
 
+  function weatherScore(w) {
+    if (!w || !Number.isFinite(w.cloud)) return null;
+    const hum = Number.isFinite(w.humidity) ? w.humidity : 60;
+    const dew = Number.isFinite(w.dew) ? w.dew : (Number.isFinite(w.temp) ? w.temp - 6 : 0);
+    const temp = Number.isFinite(w.temp) ? w.temp : dew + 6;
+    const vis = Number.isFinite(w.visibility) ? w.visibility : 15000;
+    const shear = Number.isFinite(w.wind120) && Number.isFinite(w.wind10)
+      ? Math.abs(w.wind120 - w.wind10) : 0;
+    let s = 100 - clamp(w.cloud, 0, 100);
+    s -= Math.max(0, hum - 70) * 1.5;
+    s -= Math.max(0, 8 - (temp - dew)) * 5;
+    s -= Math.max(0, 20 - vis / 1000) * 1.5;
+    s -= shear * 3;
+    return clamp(s, 0, 100);
+  }
+
+  function moonNight(st) {
+    let dark = 0, up = 0;
+    for (const p of st.pts) {
+      if (!p.dark) continue;
+      dark++;
+      if (moonInfo(p.t).alt > 0) up++;
+    }
+    const frac = dark ? up / dark : 0;
+    const moon = moonInfo(st.maxT);
+    return { score: clamp(100 - Math.pow(moon.illum, 1.5) * frac * 100, 0, 100), frac, moon };
+  }
+
   function evalObject(o, st, weather) {
     const altScore = clamp(((st.maxAlt - 15) / 65) * 100, 0, 100);
-    const moon = moonInfo(st.maxT);
+    const mn = moonNight(st);
+    const moon = mn.moon;
     const sep = angularSep(o.ra, o.dec, moon.ra, moon.dec);
-    const impact = Math.pow(moon.illum, 2) * clamp(1 - sep / 180, 0, 1) * (moon.alt > 0 ? 1 : 0.2);
-    const moonScore = clamp(100 - impact * 100, 0, 100);
     const bortleScore = clamp(((9 - LOC.bortle) / 8) * 100, 0, 100);
-    const winPts = st.pts.filter((p) => p.alt > 30);
-    const darkPts = winPts.filter((p) => p.dark);
-    const darkScore = winPts.length ? clamp((darkPts.length / winPts.length) * 100, 0, 100) : 0;
-    const weatherScore = weather && Number.isFinite(weather.cloud) ? clamp(100 - weather.cloud, 0, 100) : null;
-    const parts = [altScore, darkScore, moonScore, bortleScore];
-    if (weatherScore !== null) parts.push(weatherScore);
-    const total = Math.round(parts.reduce((acc, v) => acc * (v / 100), 1) * 100);
-    return { altScore, darkScore, moonScore, bortleScore, weatherScore, total, moon, sep };
+    const darkFrac = st.pts.length ? st.pts.filter((p) => p.dark).length / st.pts.length : 0;
+    const darkScore = clamp(darkFrac * 100, 0, 100);
+    const wScore = weatherScore(weather);
+    let total = null;
+    if (wScore !== null) {
+      total = wScore;
+      total -= (100 - bortleScore) * 0.35;
+      total -= (100 - mn.score) * 0.25;
+      total -= (100 - darkScore) * 0.25;
+      total -= (100 - altScore) * 0.15;
+      total = clamp(Math.round(total), 0, 100);
+    }
+    return { altScore, darkScore, moonScore: mn.score, bortleScore, weatherScore: wScore, total, moon, sep };
   }
 
   const scoreClass = (v) => (v >= 60 ? "good" : v >= 30 ? "mid" : "bad");
@@ -373,22 +405,29 @@
   const moonLabel = (v) => (v >= 60 ? "Не мешает" : v >= 40 ? "Слабо" : v >= 20 ? "Мешает" : "Сильно мешает");
   const bortleLabel = (v) => (v >= 70 ? "Тёмное небо" : v >= 40 ? "Пригород" : v >= 20 ? "Город" : "Сильная засветка");
   const weatherLabel = (v) => (v >= 80 ? "Ясно" : v >= 50 ? "Переменно" : v >= 20 ? "Облачно" : "Пасмурно");
+  const totalLabel = (v) => (v >= 80 ? "Отлично" : v >= 60 ? "Хорошо" : v >= 40 ? "Можно" : v >= 20 ? "Слабо" : "Нет смысла");
 
   function conditionsBlock(o, st, weather) {
     const ev = evalObject(o, st, weather);
+    const hum = weather && Number.isFinite(weather.humidity) ? ` · влажность ${Math.round(weather.humidity)}%` : "";
     const rows = [
       ["Высота", `${st.maxAlt.toFixed(0)}°`, ev.altScore, altLabel(ev.altScore)],
       ["Темнота", ev.darkScore >= 90 ? "астрономическая" : "с сумерками", ev.darkScore, darkLabel(ev.darkScore)],
       ["Луна", `${Math.round(ev.moon.illum * 100)}% · ${ev.sep.toFixed(0)}°`, ev.moonScore, moonLabel(ev.moonScore)],
       ["Засветка", `Bortle ${LOC.bortle}`, ev.bortleScore, bortleLabel(ev.bortleScore)],
-      ["Погода", weather ? `облачность ${Math.round(weather.cloud)}%` : "нет данных", ev.weatherScore, ev.weatherScore === null ? "н/д" : weatherLabel(ev.weatherScore)],
+      ["Погода", weather ? `облачность ${Math.round(weather.cloud)}%${hum}` : "нет данных", ev.weatherScore, ev.weatherScore === null ? "н/д" : weatherLabel(ev.weatherScore)],
     ];
+    const totalTxt = ev.total === null ? "—/100" : `${ev.total}/100`;
+    const totalCls = ev.total === null ? "" : scoreClass(ev.total);
+    const sub = ev.total === null
+      ? "Погода недоступна — оценка появится после загрузки"
+      : `${totalLabel(ev.total)} · погода минус штрафы за Луну, темноту, засветку и высоту`;
     return el("div", { class: "cond", id: "cond-block" },
       el("div", { class: "cond-head" },
         el("div", { class: "cond-title" }, "Из чего складывается оценка"),
-        el("div", { class: `cond-total ${scoreClass(ev.total)}` }, `${ev.total}/100`)
+        el("div", { class: `cond-total ${totalCls}` }, totalTxt)
       ),
-      el("div", { class: "cond-sub" }, "Высота × Темнота × Луна × Засветка × Погода"),
+      el("div", { class: "cond-sub" }, sub),
       ...rows.map(([name, val, score, label]) =>
         el("div", { class: "cond-row" },
           el("span", { class: "cond-name" }, name),
@@ -400,6 +439,46 @@
 
   const WEATHER_KEY = "astro-weather";
 
+  function fetchJSON(url, ms) {
+    const ctrl = typeof AbortController === "function" ? new AbortController() : null;
+    const timer = ctrl ? setTimeout(() => ctrl.abort(), ms) : null;
+    return fetch(url, ctrl ? { signal: ctrl.signal } : undefined)
+      .then((r) => { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
+      .finally(() => { if (timer) clearTimeout(timer); });
+  }
+
+  function parseOpenMeteo(j) {
+    const h = j.hourly || {};
+    const times = h.time || [];
+    const now = new Date();
+    const start = new Date(now); start.setHours(18, 0, 0, 0);
+    if (now.getHours() < 6) start.setDate(start.getDate() - 1);
+    const end = new Date(start.getTime() + 12 * 3600000);
+    const idx = [];
+    for (let i = 0; i < times.length; i++) {
+      const d = new Date(times[i]);
+      if (d >= start && d <= end) idx.push(i);
+    }
+    if (!idx.length) return null;
+    const avg = (arr) => (arr && arr.length
+      ? idx.reduce((s, i) => s + (Number.isFinite(+arr[i]) ? +arr[i] : 0), 0) / idx.length
+      : null);
+    return {
+      lat: LAT, lon: LON, time: Date.now(),
+      cloud: avg(h.cloud_cover) ?? 0,
+      cloudLow: avg(h.cloud_cover_low),
+      cloudMid: avg(h.cloud_cover_mid),
+      cloudHigh: avg(h.cloud_cover_high),
+      humidity: avg(h.relative_humidity_2m),
+      dew: avg(h.dew_point_2m),
+      temp: avg(h.temperature_2m),
+      visibility: avg(h.visibility),
+      wind10: avg(h.wind_speed_10m),
+      wind120: avg(h.wind_speed_120m),
+      source: "open-meteo",
+    };
+  }
+
   function loadWeather(cb) {
     if (typeof fetch !== "function") { cb(null); return; }
     try {
@@ -408,35 +487,23 @@
         cb(c); return;
       }
     } catch { /* ignore */ }
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}`
-      + "&hourly=cloud_cover,relative_humidity_2m,wind_speed_10m&timezone=auto&forecast_days=2";
-    const ctrl = typeof AbortController === "function" ? new AbortController() : null;
-    const timer = ctrl ? setTimeout(() => ctrl.abort(), 8000) : null;
-    fetch(url, ctrl ? { signal: ctrl.signal } : undefined)
-      .then((r) => { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
-      .then((j) => {
-        const h = j.hourly || {};
-        const times = h.time || [], clouds = h.cloud_cover || [];
-        const hum = h.relative_humidity_2m || [], wind = h.wind_speed_10m || [];
-        const now = new Date();
-        const start = new Date(now); start.setHours(18, 0, 0, 0);
-        if (now.getHours() < 6) start.setDate(start.getDate() - 1);
-        const end = new Date(start.getTime() + 12 * 3600000);
-        let sumC = 0, sumH = 0, sumW = 0, n = 0;
-        for (let i = 0; i < times.length; i++) {
-          const d = new Date(times[i]);
-          if (d < start || d > end) continue;
-          sumC += +clouds[i] || 0;
-          sumH += +hum[i] || 0;
-          sumW += +wind[i] || 0;
-          n++;
-        }
-        const data = n ? { lat: LAT, lon: LON, time: Date.now(), cloud: sumC / n, humidity: sumH / n, wind: sumW / n } : null;
-        if (data) { try { localStorage.setItem(WEATHER_KEY, JSON.stringify(data)); } catch { /* ignore */ } }
+    const om = `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}`
+      + "&hourly=cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,relative_humidity_2m,"
+      + "dew_point_2m,temperature_2m,visibility,wind_speed_10m,wind_speed_120m&timezone=auto&forecast_days=2";
+    const sources = [
+      () => fetchJSON(om, 8000),
+      () => fetchJSON("https://api.allorigins.win/raw?url=" + encodeURIComponent(om), 15000),
+    ];
+    Promise.any(sources.map((f) => f().then((j) => {
+      const d = parseOpenMeteo(j);
+      if (!d) throw new Error("empty");
+      return d;
+    })))
+      .then((data) => {
+        try { localStorage.setItem(WEATHER_KEY, JSON.stringify(data)); } catch { /* ignore */ }
         cb(data);
       })
-      .catch(() => cb(null))
-      .finally(() => { if (timer) clearTimeout(timer); });
+      .catch(() => cb(null));
   }
 
   // ---------- детальное окно ----------
