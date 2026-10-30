@@ -452,10 +452,12 @@
 
   const WEATHER_KEY = "astro-weather";
 
-  function fetchJSON(url, ms) {
+  function fetchJSON(url, ms, cacheMode) {
     const ctrl = typeof AbortController === "function" ? new AbortController() : null;
     const timer = ctrl ? setTimeout(() => ctrl.abort(), ms) : null;
-    return fetch(url, ctrl ? { signal: ctrl.signal } : undefined)
+    const init = ctrl ? { signal: ctrl.signal } : {};
+    if (cacheMode) init.cache = cacheMode;
+    return fetch(url, init)
       .then((r) => { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
       .finally(() => { if (timer) clearTimeout(timer); });
   }
@@ -477,6 +479,7 @@
       ? idx.reduce((s, i) => s + (Number.isFinite(+arr[i]) ? +arr[i] : 0), 0) / idx.length
       : null);
     return {
+      schema: 2,
       lat: LAT, lon: LON, time: Date.now(),
       cloud: avg(h.cloud_cover) ?? 0,
       cloudLow: avg(h.cloud_cover_low),
@@ -493,11 +496,12 @@
   }
 
   function weatherFromStatic() {
-    return fetchJSON("data/weather.json", 5000).then((j) => {
+    return fetchJSON("data/weather.json", 5000, "no-store").then((j) => {
       const list = j.locations || [];
       const loc = list.find((x) => Math.abs(+x.lat - LAT) < 0.05 && Math.abs(+x.lon - LON) < 0.05);
       if (!loc) throw new Error("no location");
       return {
+        schema: 2,
         lat: +loc.lat, lon: +loc.lon, time: Date.now(),
         cloud: loc.cloud_cover, humidity: loc.relative_humidity_2m,
         dew: loc.dew_point_2m, temp: loc.temperature_2m, visibility: loc.visibility,
@@ -531,7 +535,7 @@
     if (typeof fetch !== "function") { cb(null); return; }
     try {
       const c = JSON.parse(localStorage.getItem(WEATHER_KEY) || "null");
-      if (c && Math.abs(c.lat - LAT) < 0.01 && Math.abs(c.lon - LON) < 0.01 && Date.now() - c.time < 30 * 60000) {
+      if (c && c.schema === 2 && Math.abs(c.lat - LAT) < 0.01 && Math.abs(c.lon - LON) < 0.01 && Date.now() - c.time < 30 * 60000) {
         cb(c); return;
       }
     } catch { /* ignore */ }
