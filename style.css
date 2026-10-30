@@ -393,6 +393,18 @@ a:hover { text-decoration: underline; }
   margin-top: 4px;
 }
 
+.fov { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+
+.fov-svg svg { display: block; max-width: 100%; height: auto; }
+
+.fov-field { fill: rgba(79, 179, 255, .05); stroke: var(--accent); stroke-width: 1.2; }
+
+.fov-grid { stroke: var(--line); stroke-width: .7; stroke-dasharray: 2 3; }
+
+.fov-object { fill: rgba(255, 180, 84, .15); stroke: var(--warn); stroke-width: 1.2; }
+
+.fov-label { fill: var(--dim); font: 9px "Segoe UI", system-ui, sans-serif; }
+
 .months {
   display: flex;
   align-items: flex-end;

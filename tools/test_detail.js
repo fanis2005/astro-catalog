@@ -8,7 +8,7 @@ const site = path.join(__dirname, "..");
 function makeEl(tag = "div") {
   const node = {
     tag, children: [], style: {}, className: "", value: "", textContent: "", innerHTML: "",
-    append(...kids) { this.children.push(...kids); },
+    append(...kids) { for (const k of kids) { this.children.push(k); if (typeof k === "string") this.textContent += k; } },
     appendChild(k) { this.children.push(k); },
     setAttribute() {}, addEventListener() {}, remove() {},
     classList: { toggle() {}, add() {}, remove() {} },
@@ -59,3 +59,17 @@ for (const o of cat.slice(0, 5)) {
 }
 console.log("openDetail без ошибок:", ok, "| элементов создано:", created.length);
 console.log("modal-backdrop в созданных:", created.some((e) => e.className === "modal-backdrop"));
+
+const fovs = created.filter((e) => e.className === "fov");
+const fovSvg = fovs.length && fovs[0].children.find((c) => c.className === "fov-svg");
+const okFov = !!fovSvg && /fov-field/.test(fovSvg.innerHTML) && /fov-object/.test(fovSvg.innerHTML);
+console.log("схема кадрирования:", okFov, "| схем:", fovs.length);
+
+// мелкий объект: радиус не должен схлопнуться в ноль
+const small = cat.find((o) => o.id === "ngc6543");
+A.openDetail(small);
+const last = created.filter((e) => e.className === "fov").pop();
+const lastSvg = last.children.find((c) => c.className === "fov-svg").innerHTML;
+const r = /class="fov-object"[^>]*r="([\d.]+)"/.exec(lastSvg);
+console.log("NGC 6543: r =", r ? r[1] : "нет", "| подпись:", last.children.find((c) => c.className === "meta").textContent);
+if (!okFov || !r || Number(r[1]) < 1) process.exit(1);

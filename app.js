@@ -243,6 +243,37 @@
     );
   }
 
+  // ---------- схема кадрирования ----------
+  const FOV_DEG = 3.19; // поле SV545 (203 мм) + SV605CC, квадратный сенсор
+
+  function fovBlock(o) {
+    const SIZE = 180, PAD = 10, C = PAD + SIZE / 2;
+    const fovArcmin = FOV_DEG * 60;
+    const r = Math.max(2, (o.size / fovArcmin) * (SIZE / 2));
+    const pct = (o.size / fovArcmin) * 100;
+    const step = SIZE / FOV_DEG;
+    const grid = [-1, 0, 1].map((d) => {
+      const x = (C + d * step).toFixed(1);
+      const y = PAD;
+      const e = PAD + SIZE;
+      return `<line x1="${x}" y1="${y}" x2="${x}" y2="${e}"/>` +
+        `<line x1="${PAD}" y1="${x}" x2="${e}" y2="${x}"/>`;
+    }).join("");
+    const svg = `<svg viewBox="0 0 200 200" width="${SIZE}" height="${SIZE}" role="img" aria-label="Поле зрения">` +
+      `<rect class="fov-field" x="${PAD}" y="${PAD}" width="${SIZE}" height="${SIZE}" rx="2"/>` +
+      `<g class="fov-grid">${grid}</g>` +
+      `<circle class="fov-object" cx="${C}" cy="${C}" r="${r.toFixed(1)}"/>` +
+      `<text class="fov-label" x="${C}" y="7" text-anchor="middle">N</text>` +
+      `<text class="fov-label" x="7" y="${C + 3}" text-anchor="middle">E</text>` +
+      `</svg>`;
+    const sizeTxt = String(o.size).replace(".", ",");
+    const pctTxt = pct < 1 ? "<1" : pct.toFixed(0);
+    return el("div", { class: "fov" },
+      el("div", { class: "fov-svg", html: svg }),
+      el("div", { class: "meta" }, `поле ${FOV_DEG.toFixed(2).replace(".", ",")}° × ${FOV_DEG.toFixed(2).replace(".", ",")}° (SV545 + SV605CC) · объект ${sizeTxt}′ — ${pctTxt} % кадра`)
+    );
+  }
+
   // ---------- детальное окно ----------
   function closeModal() {
     const m = document.getElementById("modal-backdrop");
@@ -319,6 +350,8 @@
           el("div", { class: "meta", html: `RA ${raStr} · Dec ${decStr} (J2000)` }),
           el("div", { class: "meta", html: `сейчас: ${fmtAlt(alt)} · азимут ${az.toFixed(0)}° · Луна ${(moon.illum * 100).toFixed(0)}% на ${moon.alt >= 0 ? "+" : ""}${moon.alt.toFixed(0)}°, до объекта ${sep.toFixed(0)}°` }),
           info ? el("div", { class: "meta done", html: "✔ снято: " + shotsLine(info) }) : el("div", { class: "meta" }, "ещё не снималось"),
+          el("div", { class: "section-title" }, "Кадрирование"),
+          fovBlock(o),
           el("div", { class: "section-title" }, "Видимость по месяцам"),
           el("div", { class: "months" }, ...months),
           el("div", { class: "meta" }, o.note),
