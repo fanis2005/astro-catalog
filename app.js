@@ -5,8 +5,45 @@
   const data = window.CATALOG;
   const obj = data.objects;
   const SHOTS = window.SHOTS || {};
-  const LAT = data.lat, LON = data.lon;
   const MONTHS = data.months_ru;
+
+  // ---------- локация ----------
+  const LOC_KEY = "astro-location";
+  const DEFAULT_LOCATION = { name: "Москва/Подмосковье", lat: data.lat, lon: data.lon };
+  const PRESETS = [
+    { name: "Москва/Подмосковье", lat: 55.8, lon: 38.2167 },
+    { name: "Москва (центр)", lat: 55.7558, lon: 37.6173 },
+    { name: "Санкт-Петербург", lat: 59.9343, lon: 30.3351 },
+    { name: "Нижний Новгород", lat: 56.3269, lon: 44.0059 },
+    { name: "Крым (Симеиз)", lat: 44.4, lon: 34.0 },
+    { name: "Сочи", lat: 43.5855, lon: 39.7231 },
+  ];
+
+  function readLocation() {
+    try {
+      const v = JSON.parse(localStorage.getItem(LOC_KEY) || "null");
+      if (v && Number.isFinite(+v.lat) && Number.isFinite(+v.lon)) {
+        return { name: String(v.name || "").trim() || DEFAULT_LOCATION.name, lat: +v.lat, lon: +v.lon };
+      }
+    } catch { /* повреждённое значение — берём локацию по умолчанию */ }
+    return { ...DEFAULT_LOCATION };
+  }
+
+  let LOC = readLocation();
+  let LAT = LOC.lat, LON = LOC.lon;
+  let monthCache = { key: "", map: new Map() };
+
+  const locationKey = () => `${LAT.toFixed(4)},${LON.toFixed(4)}`;
+
+  function fmtLat(v) {
+    return `${Math.abs(v).toFixed(1).replace(".", ",")}° ${v >= 0 ? "N" : "S"}`;
+  }
+
+  function fmtLon(v) {
+    return `${Math.abs(v).toFixed(1).replace(".", ",")}° ${v >= 0 ? "E" : "W"}`;
+  }
+
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
   const $ = (s) => document.querySelector(s);
   const el = (tag, attrs = {}, ...kids) => {
@@ -116,6 +153,61 @@
 
   function sunAlt(d) { const s = sunEq(d); return altAz(s.ra, s.dec, d).alt; }
 
+  // ---------- видимость по месяцам для выбранной локации ----------
+  // Повторяет расчёт build_catalog.py: 15-е число, шаг 10 мин, только тёмное время
+  // (Солнце ниже −18°), максимальная высота и часы выше 30°.
+  function monthStats(o, month) {
+    const year = new Date().getFullYear();
+    let best = -90, hours = 0;
+    for (let min = 0; min < 24 * 60; min += 10) {
+      const d = new Date(Date.UTC(year, month - 1, 15, 0, min));
+      if (sunAlt(d) > -18) continue;
+      const alt = altAz(o.ra, o.dec, d).alt;
+      if (alt > best) best = alt;
+      if (alt > 30) hours += 10 / 60;
+    }
+    return { m: month, max_alt: Math.round(best * 10) / 10, hours30: Math.round(hours * 10) / 10 };
+  }
+
+  function monthsFor(o) {
+    const key = locationKey();
+    if (monthCache.key !== key) monthCache = { key, map: new Map() };
+    let rows = monthCache.map.get(o.id);
+    if (!rows) {
+      rows = [];
+      for (let m = 1; m <= 12; m++) rows.push(monthStats(o, m));
+      monthCache.map.set(o.id, rows);
+    }
+    return rows;
+  }
+
+  function applyLocation(loc, persist = true) {
+    let lat = Number(loc.lat), lon = Number(loc.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
+    lat = Math.max(-90, Math.min(90, lat));
+    lon = (((lon + 180) % 360) + 360) % 360 - 180;
+    const name = String(loc.name || "").trim() || `${fmtLat(lat)}, ${fmtLon(lon)}`;
+    LOC = { name, lat, lon };
+    LAT = lat;
+    LON = lon;
+    monthCache = { key: "", map: new Map() };
+    if (persist) {
+      try { localStorage.setItem(LOC_KEY, JSON.stringify(LOC)); } catch { /* приватный режим */ }
+    }
+    updateSiteText();
+    renderMoon();
+    render();
+    return true;
+  }
+
+  function updateSiteText() {
+    const coords = `${fmtLat(LAT)}, ${fmtLon(LON)}`;
+    const info = document.getElementById("site-info");
+    if (info) info.innerHTML = `Локация: <b>${esc(LOC.name)}</b> · ${coords}`;
+    const foot = document.getElementById("foot-site");
+    if (foot) foot.textContent = `${LOC.name} (${coords})`;
+  }
+
   // ---------- снятое ----------
   function shotsFor(o) {
     const alias = (o.alias || "").toLowerCase();
@@ -173,7 +265,7 @@
     const raStr = `${raH}h ${String(raM).padStart(2, "0")}m ${String(raS).padStart(2, "0")}s`;
     const decStr = `${o.dec < 0 ? "−" : "+"}${dd}° ${String(dm).padStart(2, "0")}′`;
 
-    const months = o.months.map((mm) => {
+    const months = monthsFor(o).map((mm) => {
       const h = Math.max(1, Math.min(100, ((mm.max_alt + 20) / 110) * 100));
       const cls = mm.max_alt >= 60 ? "good" : mm.max_alt >= 30 ? "mid" : "bad";
       return el("div", { class: "mbar", title: `${MONTHS[mm.m - 1]}: ${mm.max_alt}°, ${mm.hours30} ч` },
@@ -316,7 +408,7 @@
 
   function renderMonth() {
     const rows = obj.filter(pass).map((o) => {
-      const mon = o.months.find((x) => x.m === state.month);
+      const mon = monthsFor(o).find((x) => x.m === state.month);
       return { o, maxAlt: mon.max_alt, hours: mon.hours30 };
     }).filter((r) => r.maxAlt >= 25).sort((a, b) => b.hours - a.hours || b.maxAlt - a.maxAlt);
     if (!rows.length) return [el("div", { class: "empty", html: "В этом месяце ничего не поднимается выше 25°." })];
@@ -684,6 +776,86 @@
     fr.readAsText(file);
   }
 
+  function syncLocationFields() {
+    const name = document.getElementById("loc-name");
+    const lat = document.getElementById("loc-lat");
+    const lon = document.getElementById("loc-lon");
+    const preset = document.getElementById("loc-preset");
+    if (name) name.value = LOC.name;
+    if (lat) lat.value = String(Math.round(LOC.lat * 1000) / 1000);
+    if (lon) lon.value = String(Math.round(LOC.lon * 1000) / 1000);
+    if (preset) {
+      const i = PRESETS.findIndex((p) =>
+        Math.abs(p.lat - LOC.lat) < 0.0005 && Math.abs(p.lon - LOC.lon) < 0.0005);
+      preset.value = i >= 0 ? String(i) : "custom";
+    }
+  }
+
+  function initLocationUI() {
+    const panel = document.getElementById("loc-panel");
+    if (!panel) return;
+    const edit = document.getElementById("loc-edit");
+    const preset = document.getElementById("loc-preset");
+    const name = document.getElementById("loc-name");
+    const lat = document.getElementById("loc-lat");
+    const lon = document.getElementById("loc-lon");
+    const hint = document.getElementById("loc-hint");
+    const HINT = hint ? hint.textContent : "";
+    let opened = false;
+
+    if (preset) {
+      PRESETS.forEach((p, i) => preset.append(
+        el("option", { value: String(i) }, `${p.name} — ${fmtLat(p.lat)}, ${fmtLon(p.lon)}`)));
+      preset.append(el("option", { value: "custom" }, "другая точка"));
+    }
+    syncLocationFields();
+
+    const show = () => { opened = true; panel.classList.remove("hidden"); syncLocationFields(); };
+    const hide = () => { opened = false; panel.classList.add("hidden"); };
+
+    if (edit) edit.addEventListener("click", () => { if (opened) hide(); else show(); });
+
+    const closeBtn = document.getElementById("loc-close");
+    if (closeBtn) closeBtn.addEventListener("click", hide);
+
+    if (preset) preset.addEventListener("change", () => {
+      if (preset.value === "custom") return;
+      const p = PRESETS[Number(preset.value)];
+      if (!p) return;
+      if (name) name.value = p.name;
+      if (lat) lat.value = String(p.lat);
+      if (lon) lon.value = String(p.lon);
+      if (hint) hint.textContent = HINT;
+    });
+
+    const apply = () => {
+      const la = parseFloat(String(lat ? lat.value : "").replace(",", "."));
+      const lo = parseFloat(String(lon ? lon.value : "").replace(",", "."));
+      if (!Number.isFinite(la) || !Number.isFinite(lo)) {
+        if (hint) hint.textContent = "Введите широту и долготу числами — например, 55,8 и 38,2.";
+        return;
+      }
+      if (applyLocation({ name: name ? name.value : "", lat: la, lon: lo })) {
+        if (hint) hint.textContent = HINT;
+        syncLocationFields();
+        hide();
+      }
+    };
+
+    const applyBtn = document.getElementById("loc-apply");
+    if (applyBtn) applyBtn.addEventListener("click", apply);
+    const resetBtn = document.getElementById("loc-reset");
+    if (resetBtn) resetBtn.addEventListener("click", () => {
+      applyLocation({ ...DEFAULT_LOCATION });
+      syncLocationFields();
+      if (hint) hint.textContent = HINT;
+    });
+
+    for (const inp of [name, lat, lon]) {
+      if (inp) inp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); apply(); } });
+    }
+  }
+
   const gate = document.getElementById("gate");
   const gateForm = document.getElementById("gate-form");
   const gatePass = document.getElementById("gate-pass");
@@ -693,6 +865,7 @@
 
   function unlock() {
     if (gate) gate.classList.add("hidden");
+    updateSiteText();
     renderMoon();
     render();
   }
@@ -729,5 +902,10 @@
 
   setInterval(() => { renderMoon(); if (state.tab === "now") render(); }, 60000);
 
-  window.__astro = { ninaBuild, moonInfo, sunAlt, nightWindow, objectWindow, planStore, openDetail };
+  initLocationUI();
+
+  window.__astro = {
+    ninaBuild, moonInfo, sunAlt, nightWindow, objectWindow, planStore, openDetail,
+    applyLocation, monthsFor, getLocation: () => ({ ...LOC }),
+  };
 })();
