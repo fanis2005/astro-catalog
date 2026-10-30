@@ -506,6 +506,34 @@
       .catch(() => cb(null));
   }
 
+  function monthsChart(o) {
+    const rows = monthsFor(o);
+    const W = 420, H = 120, L = 28, R = 8, T = 10, B = 20;
+    const iw = W - L - R, ih = H - T - B;
+    const x = (i) => L + (i / 11) * iw;
+    const y = (a) => T + ((90 - clamp(a, 0, 90)) / 90) * ih;
+    const pts = rows.map((mm, i) => `${x(i).toFixed(1)},${y(mm.max_alt).toFixed(1)}`);
+    const line = pts.map((p, i) => `${i ? "L" : "M"}${p}`).join(" ");
+    const area = `M${x(0).toFixed(1)},${(T + ih).toFixed(1)} `
+      + pts.map((p) => `L${p}`).join(" ")
+      + ` L${x(11).toFixed(1)},${(T + ih).toFixed(1)} Z`;
+    const dots = rows.map((mm, i) => {
+      const title = `${MONTHS[i]}: макс. ${mm.max_alt}°, выше 30° — ${mm.hours30} ч`;
+      return `<circle class="mchart-dot" cx="${x(i).toFixed(1)}" cy="${y(mm.max_alt).toFixed(1)}" r="2.6"><title>${title}</title></circle>`;
+    }).join("");
+    const labels = rows.map((mm, i) =>
+      `<text class="chart-label" x="${x(i).toFixed(1)}" y="${H - 5}" text-anchor="middle">${MONTHS[i]}</text>`).join("");
+    const yTicks = [0, 30, 60].map((a) =>
+      `<text class="chart-label" x="${L - 4}" y="${(y(a) + 3).toFixed(1)}" text-anchor="end">${a}°</text>`).join("");
+    const svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Видимость по месяцам">` +
+      `<path class="mchart-area" d="${area}"/>` +
+      `<line class="mchart-30" x1="${L}" y1="${y(30).toFixed(1)}" x2="${W - R}" y2="${y(30).toFixed(1)}"/>` +
+      `<path class="mchart-line" d="${line}"/>` +
+      dots + labels + yTicks +
+      `</svg>`;
+    return el("div", { class: "months-chart", html: svg });
+  }
+
   // ---------- детальное окно ----------
   function closeModal() {
     const m = document.getElementById("modal-backdrop");
@@ -528,14 +556,6 @@
     const dm = Math.floor((Math.abs(o.dec) % 1) * 60);
     const raStr = `${raH}h ${String(raM).padStart(2, "0")}m ${String(raS).padStart(2, "0")}s`;
     const decStr = `${o.dec < 0 ? "−" : "+"}${dd}° ${String(dm).padStart(2, "0")}′`;
-
-    const months = monthsFor(o).map((mm) => {
-      const h = Math.max(1, Math.min(100, ((mm.max_alt + 20) / 110) * 100));
-      const cls = mm.max_alt >= 60 ? "good" : mm.max_alt >= 30 ? "mid" : "bad";
-      return el("div", { class: "mbar", title: `${MONTHS[mm.m - 1]}: ${mm.max_alt}°, ${mm.hours30} ч` },
-        el("i", { class: cls, style: `height:${h}%` }),
-        el("span", {}, MONTHS[mm.m - 1].slice(0, 1)));
-    });
 
     const inPlan = planStore.has(o.id);
     const planBtn = el("button", {
@@ -590,7 +610,7 @@
           el("div", { class: "section-title" }, "Кадрирование"),
           fovBlock(o),
           el("div", { class: "section-title" }, "Видимость по месяцам"),
-          el("div", { class: "months" }, ...months),
+          monthsChart(o),
           el("div", { class: "meta" }, o.note),
           el("div", { class: "row" }, planBtn, statusSel),
           note,

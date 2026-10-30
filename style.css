@@ -421,6 +421,16 @@ a:hover { text-decoration: underline; }
 
 .chart-label { fill: var(--dim); font: 9px "Segoe UI", system-ui, sans-serif; }
 
+.months-chart svg { width: 100%; max-width: 420px; height: auto; display: block; }
+
+.mchart-area { fill: rgba(79, 179, 255, .12); }
+
+.mchart-line { fill: none; stroke: var(--accent); stroke-width: 2; }
+
+.mchart-dot { fill: var(--accent); }
+
+.mchart-30 { stroke: var(--line); stroke-dasharray: 3 3; }
+
 .cond {
   display: flex;
   flex-direction: column;

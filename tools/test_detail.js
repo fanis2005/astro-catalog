@@ -79,6 +79,8 @@ console.log("заполнение: M31", A.frameFill(m31).toFixed(0) + "%", "| N
 
 const ns = A.nightStats(m31);
 console.log("ночь M31: макс.", ns.maxAlt.toFixed(0) + "°", "| окно > 30°:", ns.winStart ? "есть" : "нет");
+const mchart = created.find((e) => e.className === "months-chart");
+console.log("график месяцев:", !!mchart && /mchart-line/.test(mchart.innerHTML) && /mchart-dot/.test(mchart.innerHTML));
 const ev = A.evalObject(m31, ns, { cloud: 0 });
 console.log("оценка M31:", JSON.stringify({
   alt: Math.round(ev.altScore), dark: Math.round(ev.darkScore), moon: Math.round(ev.moonScore),
