@@ -228,7 +228,7 @@
   }
 
   // ---------- UI ----------
-  const state = { tab: "now", month: new Date().getMonth() + 1, type: "", filter: "", suited: false, q: "" };
+  const state = { tab: "now", month: new Date().getMonth() + 1, type: "", filter: "", fill: 0, suited: false, q: "" };
 
   function fmtAlt(a) {
     const cls = a >= 40 ? "good" : a >= 20 ? "mid" : "bad";
@@ -246,11 +246,19 @@
   // ---------- схема кадрирования ----------
   const FOV_DEG = 3.19; // поле SV545 (203 мм) + SV605CC, квадратный сенсор
 
+  function frameFill(o) {
+    return (o.size / (FOV_DEG * 60)) * 100;
+  }
+
+  function fillLabel(o) {
+    const v = frameFill(o);
+    return v < 1 ? "<1 %" : `${v.toFixed(0)} %`;
+  }
+
   function fovBlock(o) {
     const SIZE = 180, PAD = 10, C = PAD + SIZE / 2;
-    const fovArcmin = FOV_DEG * 60;
-    const r = Math.max(2, (o.size / fovArcmin) * (SIZE / 2));
-    const pct = (o.size / fovArcmin) * 100;
+    const r = Math.max(2, (frameFill(o) / 100) * (SIZE / 2));
+    const pct = frameFill(o);
     const step = SIZE / FOV_DEG;
     const grid = [-1, 0, 1].map((d) => {
       const x = (C + d * step).toFixed(1);
@@ -407,6 +415,7 @@
         el("div", { class: "meta", html: `${o.type} · ${o.size}′ · ${o.mag}<sup>m</sup> · фильтр <b>${o.filter}</b>` }),
         el("div", { class: "row" },
           el("span", { class: "pill" }, `сложность ${"★".repeat(o.difficulty)}${"☆".repeat(3 - o.difficulty)}`),
+          el("span", { class: "pill" }, `${fillLabel(o)} кадра`),
           alt !== null ? el("span", { class: "meta", html: `сейчас ${fmtAlt(alt)} (${az.toFixed(0)}°)` }) : null,
           nearMoon ? el("span", { class: "pill bad-pill" }, "рядом Луна") : null
         ),
@@ -432,6 +441,7 @@
     if (state.suited && !o.suited) return false;
     if (state.type && o.type !== state.type) return false;
     if (state.filter && o.filter !== state.filter) return false;
+    if (state.fill && frameFill(o) < state.fill) return false;
     if (state.q) {
       const q = state.q.toLowerCase();
       if (!(o.name + " " + o.constellation + " " + o.type + " " + o.note).toLowerCase().includes(q)) return false;
@@ -446,7 +456,7 @@
     }).filter((r) => r.maxAlt >= 25).sort((a, b) => b.hours - a.hours || b.maxAlt - a.maxAlt);
     if (!rows.length) return [el("div", { class: "empty", html: "В этом месяце ничего не поднимается выше 25°." })];
     return [el("table", {},
-      el("thead", {}, el("tr", {}, ...["объект", "тип", "созвездие", "макс. высота", "часов > 30°", "фильтр", "снято"].map((h) => el("th", {}, h)))),
+      el("thead", {}, el("tr", {}, ...["объект", "тип", "созвездие", "макс. высота", "часов > 30°", "заполнение", "фильтр", "снято"].map((h) => el("th", {}, h)))),
       el("tbody", {}, ...rows.map((r) => {
         const info = shotsFor(r.o);
         return el("tr", {},
@@ -455,6 +465,7 @@
           el("td", {}, r.o.constellation),
           el("td", { html: fmtAlt(r.maxAlt) }),
           el("td", { class: "hours" }, r.hours.toFixed(1)),
+          el("td", { class: "hours" }, fillLabel(r.o)),
           el("td", {}, r.o.filter),
           el("td", { class: "meta" }, info ? `${info.light_frames} кадр.` : "—")
         );
@@ -928,6 +939,7 @@
   $("#month").addEventListener("change", (e) => { state.month = +e.target.value; render(); });
   $("#type").addEventListener("change", (e) => { state.type = e.target.value; render(); });
   $("#filter").addEventListener("change", (e) => { state.filter = e.target.value; render(); });
+  $("#fill").addEventListener("change", (e) => { state.fill = +e.target.value; render(); });
   $("#suited").addEventListener("change", (e) => { state.suited = e.target.checked; render(); });
   $("#q").addEventListener("input", (e) => { state.q = e.target.value; render(); });
   $("#export").addEventListener("click", exportJson);
@@ -939,6 +951,6 @@
 
   window.__astro = {
     ninaBuild, moonInfo, sunAlt, nightWindow, objectWindow, planStore, openDetail,
-    applyLocation, monthsFor, getLocation: () => ({ ...LOC }),
+    applyLocation, monthsFor, frameFill, getLocation: () => ({ ...LOC }),
   };
 })();

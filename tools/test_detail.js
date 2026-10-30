@@ -72,4 +72,9 @@ const last = created.filter((e) => e.className === "fov").pop();
 const lastSvg = last.children.find((c) => c.className === "fov-svg").innerHTML;
 const r = /class="fov-object"[^>]*r="([\d.]+)"/.exec(lastSvg);
 console.log("NGC 6543: r =", r ? r[1] : "нет", "| подпись:", last.children.find((c) => c.className === "meta").textContent);
+
+const m31 = cat.find((o) => o.id === "m31");
+const ngc7331 = cat.find((o) => o.id === "ngc7331");
+console.log("заполнение: M31", A.frameFill(m31).toFixed(0) + "%", "| NGC 7331", A.frameFill(ngc7331).toFixed(1) + "%");
 if (!okFov || !r || Number(r[1]) < 1) process.exit(1);
+if (Math.abs(A.frameFill(m31) - 93) > 1 || Math.abs(A.frameFill(ngc7331) - 5.2) > 0.3) process.exit(1);
