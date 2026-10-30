@@ -405,6 +405,53 @@ a:hover { text-decoration: underline; }
 
 .fov-label { fill: var(--dim); font: 9px "Segoe UI", system-ui, sans-serif; }
 
+.night-chart svg { width: 100%; max-width: 420px; height: auto; display: block; }
+
+.chart-bg { fill: rgba(255, 255, 255, .02); stroke: var(--line); }
+
+.chart-line { fill: none; stroke: var(--accent); stroke-width: 2; }
+
+.chart-30 { stroke: var(--line); stroke-dasharray: 3 3; }
+
+.chart-win { fill: rgba(79, 179, 255, .09); }
+
+.chart-now { stroke: var(--warn); stroke-width: 1.2; }
+
+.chart-max { fill: var(--good); }
+
+.chart-label { fill: var(--dim); font: 9px "Segoe UI", system-ui, sans-serif; }
+
+.cond {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.cond-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+
+.cond-title { font-size: 13px; font-weight: 600; }
+
+.cond-total { font-size: 18px; font-weight: 700; }
+.cond-total.good { color: var(--good); }
+.cond-total.mid { color: var(--warn); }
+.cond-total.bad { color: var(--bad); }
+
+.cond-sub { font-size: 11px; color: var(--dim); }
+
+.cond-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+
+.cond-name { color: var(--dim); width: 74px; flex: none; }
+
+.cond-val { flex: 1; }
+
+.pill.good { color: var(--good); border-color: #245c3f; }
+.pill.mid { color: var(--warn); border-color: #5a4120; }
+.pill.bad { color: var(--bad); border-color: #5a2626; }
+
 .months {
   display: flex;
   align-items: flex-end;

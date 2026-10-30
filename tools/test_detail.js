@@ -76,5 +76,14 @@ console.log("NGC 6543: r =", r ? r[1] : "нет", "| подпись:", last.chil
 const m31 = cat.find((o) => o.id === "m31");
 const ngc7331 = cat.find((o) => o.id === "ngc7331");
 console.log("заполнение: M31", A.frameFill(m31).toFixed(0) + "%", "| NGC 7331", A.frameFill(ngc7331).toFixed(1) + "%");
+
+const ns = A.nightStats(m31);
+console.log("ночь M31: макс.", ns.maxAlt.toFixed(0) + "°", "| окно > 30°:", ns.winStart ? "есть" : "нет");
+const ev = A.evalObject(m31, ns, { cloud: 0 });
+console.log("оценка M31:", JSON.stringify({
+  alt: Math.round(ev.altScore), dark: Math.round(ev.darkScore), moon: Math.round(ev.moonScore),
+  bortle: Math.round(ev.bortleScore), weather: ev.weatherScore, total: ev.total,
+}));
 if (!okFov || !r || Number(r[1]) < 1) process.exit(1);
 if (Math.abs(A.frameFill(m31) - 93) > 1 || Math.abs(A.frameFill(ngc7331) - 5.2) > 0.3) process.exit(1);
+if (!(ev.total >= 0 && ev.total <= 100)) process.exit(1);

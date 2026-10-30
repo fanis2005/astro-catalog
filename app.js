@@ -9,21 +9,29 @@
 
   // ---------- локация ----------
   const LOC_KEY = "astro-location";
-  const DEFAULT_LOCATION = { name: "Москва/Подмосковье", lat: data.lat, lon: data.lon };
+  const DEFAULT_LOCATION = { name: "Москва/Подмосковье", lat: data.lat, lon: data.lon, bortle: 8 };
   const PRESETS = [
-    { name: "Москва/Подмосковье", lat: 55.8, lon: 38.2167 },
-    { name: "Москва (центр)", lat: 55.7558, lon: 37.6173 },
-    { name: "Санкт-Петербург", lat: 59.9343, lon: 30.3351 },
-    { name: "Нижний Новгород", lat: 56.3269, lon: 44.0059 },
-    { name: "Крым (Симеиз)", lat: 44.4, lon: 34.0 },
-    { name: "Сочи", lat: 43.5855, lon: 39.7231 },
+    { name: "Москва/Подмосковье", lat: 55.8, lon: 38.2167, bortle: 8 },
+    { name: "Москва (центр)", lat: 55.7558, lon: 37.6173, bortle: 9 },
+    { name: "Санкт-Петербург", lat: 59.9343, lon: 30.3351, bortle: 9 },
+    { name: "Нижний Новгород", lat: 56.3269, lon: 44.0059, bortle: 8 },
+    { name: "Крым (Симеиз)", lat: 44.4, lon: 34.0, bortle: 3 },
+    { name: "Сочи", lat: 43.5855, lon: 39.7231, bortle: 6 },
   ];
+
+  function clampBortle(v) {
+    const n = Math.round(+v);
+    return Number.isFinite(n) ? Math.max(1, Math.min(9, n)) : 8;
+  }
 
   function readLocation() {
     try {
       const v = JSON.parse(localStorage.getItem(LOC_KEY) || "null");
       if (v && Number.isFinite(+v.lat) && Number.isFinite(+v.lon)) {
-        return { name: String(v.name || "").trim() || DEFAULT_LOCATION.name, lat: +v.lat, lon: +v.lon };
+        return {
+          name: String(v.name || "").trim() || DEFAULT_LOCATION.name,
+          lat: +v.lat, lon: +v.lon, bortle: clampBortle(v.bortle),
+        };
       }
     } catch { /* повреждённое значение — берём локацию по умолчанию */ }
     return { ...DEFAULT_LOCATION };
@@ -187,7 +195,7 @@
     lat = Math.max(-90, Math.min(90, lat));
     lon = (((lon + 180) % 360) + 360) % 360 - 180;
     const name = String(loc.name || "").trim() || `${fmtLat(lat)}, ${fmtLon(lon)}`;
-    LOC = { name, lat, lon };
+    LOC = { name, lat, lon, bortle: clampBortle(loc.bortle ?? LOC.bortle) };
     LAT = lat;
     LON = lon;
     monthCache = { key: "", map: new Map() };
@@ -282,6 +290,155 @@
     );
   }
 
+  // ---------- условия ночи ----------
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+  function nightStats(o) {
+    const now = new Date();
+    const base = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 18, 0);
+    const start = now.getHours() < 12 ? new Date(base.getTime() - 86400000) : base;
+    const end = new Date(start.getTime() + 12 * 3600000);
+    let maxAlt = -90, maxT = start, winStart = null, winEnd = null;
+    const pts = [];
+    for (let t = new Date(start); t <= end; t = new Date(t.getTime() + 10 * 60000)) {
+      const alt = altAz(o.ra, o.dec, t).alt;
+      const dark = sunAlt(t) < -18;
+      pts.push({ t, alt, dark });
+      if (alt > maxAlt) { maxAlt = alt; maxT = t; }
+      if (alt > 30) { if (!winStart) winStart = t; winEnd = t; }
+    }
+    return { start, end, pts, maxAlt, maxT, winStart, winEnd };
+  }
+
+  function nightLine(st) {
+    let s = `макс. ${st.maxAlt.toFixed(0)}° в ${fmtHM(st.maxT)}`;
+    s += st.winStart ? ` · выше 30°: ${fmtHM(st.winStart)}–${fmtHM(st.winEnd)}` : " · выше 30° не поднимается";
+    return s;
+  }
+
+  function nightChart(o, st) {
+    const W = 420, H = 150, L = 32, R = 8, T = 10, B = 22;
+    const iw = W - L - R, ih = H - T - B;
+    const x = (t) => L + ((t - st.start) / (st.end - st.start)) * iw;
+    const y = (a) => T + ((90 - clamp(a, 0, 90)) / 90) * ih;
+    const line = st.pts.map((p, i) => `${i ? "L" : "M"}${x(p.t).toFixed(1)},${y(p.alt).toFixed(1)}`).join(" ");
+    const win = st.winStart
+      ? `<rect class="chart-win" x="${x(st.winStart).toFixed(1)}" y="${T}" width="${Math.max(1, x(st.winEnd) - x(st.winStart)).toFixed(1)}" height="${ih}"/>`
+      : "";
+    const now = new Date();
+    const nowLine = now >= st.start && now <= st.end
+      ? `<line class="chart-now" x1="${x(now).toFixed(1)}" y1="${T}" x2="${x(now).toFixed(1)}" y2="${T + ih}"/>`
+      : "";
+    const ticksX = [18, 21, 0, 3, 6].map((h) => {
+      const d = new Date(st.start);
+      d.setHours(h, 0, 0, 0);
+      if (h < 12) d.setDate(d.getDate() + 1);
+      return `<text class="chart-label" x="${x(d).toFixed(1)}" y="${H - 6}" text-anchor="middle">${String(h).padStart(2, "0")}</text>`;
+    }).join("");
+    const ticksY = [0, 30, 60].map((a) =>
+      `<text class="chart-label" x="${L - 4}" y="${(y(a) + 3).toFixed(1)}" text-anchor="end">${a}°</text>`).join("");
+    const svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Высота объекта на ночь">` +
+      `<rect class="chart-bg" x="${L}" y="${T}" width="${iw}" height="${ih}"/>` +
+      win +
+      `<line class="chart-30" x1="${L}" y1="${y(30).toFixed(1)}" x2="${W - R}" y2="${y(30).toFixed(1)}"/>` +
+      `<path class="chart-line" d="${line}"/>` +
+      nowLine +
+      `<circle class="chart-max" cx="${x(st.maxT).toFixed(1)}" cy="${y(st.maxAlt).toFixed(1)}" r="3"/>` +
+      `<text class="chart-label" x="${x(st.maxT).toFixed(1)}" y="${(y(st.maxAlt) - 6).toFixed(1)}" text-anchor="middle">${st.maxAlt.toFixed(0)}°</text>` +
+      ticksX + ticksY +
+      `</svg>`;
+    return el("div", { class: "night-chart", html: svg });
+  }
+
+  function evalObject(o, st, weather) {
+    const altScore = clamp(((st.maxAlt - 15) / 65) * 100, 0, 100);
+    const moon = moonInfo(st.maxT);
+    const sep = angularSep(o.ra, o.dec, moon.ra, moon.dec);
+    const impact = Math.pow(moon.illum, 2) * clamp(1 - sep / 180, 0, 1) * (moon.alt > 0 ? 1 : 0.2);
+    const moonScore = clamp(100 - impact * 100, 0, 100);
+    const bortleScore = clamp(((9 - LOC.bortle) / 8) * 100, 0, 100);
+    const winPts = st.pts.filter((p) => p.alt > 30);
+    const darkPts = winPts.filter((p) => p.dark);
+    const darkScore = winPts.length ? clamp((darkPts.length / winPts.length) * 100, 0, 100) : 0;
+    const weatherScore = weather && Number.isFinite(weather.cloud) ? clamp(100 - weather.cloud, 0, 100) : null;
+    const parts = [altScore, darkScore, moonScore, bortleScore];
+    if (weatherScore !== null) parts.push(weatherScore);
+    const total = Math.round(parts.reduce((acc, v) => acc * (v / 100), 1) * 100);
+    return { altScore, darkScore, moonScore, bortleScore, weatherScore, total, moon, sep };
+  }
+
+  const scoreClass = (v) => (v >= 60 ? "good" : v >= 30 ? "mid" : "bad");
+  const altLabel = (v) => (v >= 70 ? "Отлично" : v >= 45 ? "Хорошо" : v >= 25 ? "Средне" : "Низко");
+  const darkLabel = (v) => (v >= 90 ? "Темно" : v >= 50 ? "Сумерки" : "Светло");
+  const moonLabel = (v) => (v >= 60 ? "Не мешает" : v >= 40 ? "Слабо" : v >= 20 ? "Мешает" : "Сильно мешает");
+  const bortleLabel = (v) => (v >= 70 ? "Тёмное небо" : v >= 40 ? "Пригород" : v >= 20 ? "Город" : "Сильная засветка");
+  const weatherLabel = (v) => (v >= 80 ? "Ясно" : v >= 50 ? "Переменно" : v >= 20 ? "Облачно" : "Пасмурно");
+
+  function conditionsBlock(o, st, weather) {
+    const ev = evalObject(o, st, weather);
+    const rows = [
+      ["Высота", `${st.maxAlt.toFixed(0)}°`, ev.altScore, altLabel(ev.altScore)],
+      ["Темнота", ev.darkScore >= 90 ? "астрономическая" : "с сумерками", ev.darkScore, darkLabel(ev.darkScore)],
+      ["Луна", `${Math.round(ev.moon.illum * 100)}% · ${ev.sep.toFixed(0)}°`, ev.moonScore, moonLabel(ev.moonScore)],
+      ["Засветка", `Bortle ${LOC.bortle}`, ev.bortleScore, bortleLabel(ev.bortleScore)],
+      ["Погода", weather ? `облачность ${Math.round(weather.cloud)}%` : "нет данных", ev.weatherScore, ev.weatherScore === null ? "н/д" : weatherLabel(ev.weatherScore)],
+    ];
+    return el("div", { class: "cond", id: "cond-block" },
+      el("div", { class: "cond-head" },
+        el("div", { class: "cond-title" }, "Из чего складывается оценка"),
+        el("div", { class: `cond-total ${scoreClass(ev.total)}` }, `${ev.total}/100`)
+      ),
+      el("div", { class: "cond-sub" }, "Высота × Темнота × Луна × Засветка × Погода"),
+      ...rows.map(([name, val, score, label]) =>
+        el("div", { class: "cond-row" },
+          el("span", { class: "cond-name" }, name),
+          el("span", { class: "cond-val" }, val),
+          el("span", { class: `pill ${score === null ? "" : scoreClass(score)}` }, label)
+        ))
+    );
+  }
+
+  const WEATHER_KEY = "astro-weather";
+
+  function loadWeather(cb) {
+    if (typeof fetch !== "function") { cb(null); return; }
+    try {
+      const c = JSON.parse(localStorage.getItem(WEATHER_KEY) || "null");
+      if (c && Math.abs(c.lat - LAT) < 0.01 && Math.abs(c.lon - LON) < 0.01 && Date.now() - c.time < 30 * 60000) {
+        cb(c); return;
+      }
+    } catch { /* ignore */ }
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}`
+      + "&hourly=cloud_cover,relative_humidity_2m,wind_speed_10m&timezone=auto&forecast_days=2";
+    const ctrl = typeof AbortController === "function" ? new AbortController() : null;
+    const timer = ctrl ? setTimeout(() => ctrl.abort(), 8000) : null;
+    fetch(url, ctrl ? { signal: ctrl.signal } : undefined)
+      .then((r) => { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
+      .then((j) => {
+        const h = j.hourly || {};
+        const times = h.time || [], clouds = h.cloud_cover || [];
+        const hum = h.relative_humidity_2m || [], wind = h.wind_speed_10m || [];
+        const now = new Date();
+        const start = new Date(now); start.setHours(18, 0, 0, 0);
+        if (now.getHours() < 6) start.setDate(start.getDate() - 1);
+        const end = new Date(start.getTime() + 12 * 3600000);
+        let sumC = 0, sumH = 0, sumW = 0, n = 0;
+        for (let i = 0; i < times.length; i++) {
+          const d = new Date(times[i]);
+          if (d < start || d > end) continue;
+          sumC += +clouds[i] || 0;
+          sumH += +hum[i] || 0;
+          sumW += +wind[i] || 0;
+          n++;
+        }
+        const data = n ? { lat: LAT, lon: LON, time: Date.now(), cloud: sumC / n, humidity: sumH / n, wind: sumW / n } : null;
+        if (data) { try { localStorage.setItem(WEATHER_KEY, JSON.stringify(data)); } catch { /* ignore */ } }
+        cb(data);
+      })
+      .catch(() => cb(null))
+      .finally(() => { if (timer) clearTimeout(timer); });
+  }
+
   // ---------- детальное окно ----------
   function closeModal() {
     const m = document.getElementById("modal-backdrop");
@@ -295,6 +452,7 @@
     const moon = moonInfo(now);
     const sep = angularSep(o.ra, o.dec, moon.ra, moon.dec);
     const info = shotsFor(o);
+    const ns = nightStats(o);
 
     const raH = Math.floor(o.ra / 15);
     const raM = Math.floor(((o.ra / 15) % 1) * 60);
@@ -358,6 +516,10 @@
           el("div", { class: "meta", html: `RA ${raStr} · Dec ${decStr} (J2000)` }),
           el("div", { class: "meta", html: `сейчас: ${fmtAlt(alt)} · азимут ${az.toFixed(0)}° · Луна ${(moon.illum * 100).toFixed(0)}% на ${moon.alt >= 0 ? "+" : ""}${moon.alt.toFixed(0)}°, до объекта ${sep.toFixed(0)}°` }),
           info ? el("div", { class: "meta done", html: "✔ снято: " + shotsLine(info) }) : el("div", { class: "meta" }, "ещё не снималось"),
+          el("div", { class: "section-title" }, "Высота на ночь"),
+          nightChart(o, ns),
+          el("div", { class: "meta" }, nightLine(ns)),
+          conditionsBlock(o, ns, null),
           el("div", { class: "section-title" }, "Кадрирование"),
           fovBlock(o),
           el("div", { class: "section-title" }, "Видимость по месяцам"),
@@ -376,6 +538,12 @@
 
     backdrop.append(modal);
     document.body.append(backdrop);
+
+    loadWeather((w) => {
+      if (!w) return;
+      const old = document.getElementById("cond-block");
+      if (old && old.replaceWith) old.replaceWith(conditionsBlock(o, ns, w));
+    });
   }
 
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal(); });
@@ -824,10 +992,12 @@
     const name = document.getElementById("loc-name");
     const lat = document.getElementById("loc-lat");
     const lon = document.getElementById("loc-lon");
+    const bortle = document.getElementById("loc-bortle");
     const preset = document.getElementById("loc-preset");
     if (name) name.value = LOC.name;
     if (lat) lat.value = String(Math.round(LOC.lat * 1000) / 1000);
     if (lon) lon.value = String(Math.round(LOC.lon * 1000) / 1000);
+    if (bortle) bortle.value = String(LOC.bortle);
     if (preset) {
       const i = PRESETS.findIndex((p) =>
         Math.abs(p.lat - LOC.lat) < 0.0005 && Math.abs(p.lon - LOC.lon) < 0.0005);
@@ -843,6 +1013,7 @@
     const name = document.getElementById("loc-name");
     const lat = document.getElementById("loc-lat");
     const lon = document.getElementById("loc-lon");
+    const bortle = document.getElementById("loc-bortle");
     const hint = document.getElementById("loc-hint");
     const HINT = hint ? hint.textContent : "";
     let opened = false;
@@ -869,6 +1040,7 @@
       if (name) name.value = p.name;
       if (lat) lat.value = String(p.lat);
       if (lon) lon.value = String(p.lon);
+      if (bortle) bortle.value = String(p.bortle);
       if (hint) hint.textContent = HINT;
     });
 
@@ -879,7 +1051,7 @@
         if (hint) hint.textContent = "Введите широту и долготу числами — например, 55,8 и 38,2.";
         return;
       }
-      if (applyLocation({ name: name ? name.value : "", lat: la, lon: lo })) {
+      if (applyLocation({ name: name ? name.value : "", lat: la, lon: lo, bortle: bortle ? +bortle.value : LOC.bortle })) {
         if (hint) hint.textContent = HINT;
         syncLocationFields();
         hide();
@@ -951,6 +1123,7 @@
 
   window.__astro = {
     ninaBuild, moonInfo, sunAlt, nightWindow, objectWindow, planStore, openDetail,
-    applyLocation, monthsFor, frameFill, getLocation: () => ({ ...LOC }),
+    applyLocation, monthsFor, frameFill, nightStats, evalObject,
+    getLocation: () => ({ ...LOC }),
   };
 })();

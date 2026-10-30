@@ -75,7 +75,7 @@ function check(name, cond, extra = "") {
   if (!cond) failed++;
 }
 
-check("при загрузке локация по умолчанию", A.getLocation().name === "Москва/Подмосковье");
+check("при загрузке локация по умолчанию", A.getLocation().name === "Москва/Подмосковье" && A.getLocation().bortle === 8);
 check("шапка заполнена", /Локация:/.test($("site-info").innerHTML) && /55,8° N/.test($("site-info").innerHTML));
 
 // открыть панель
@@ -87,7 +87,7 @@ $("loc-preset").value = "5";
 $("loc-preset").handlers.change();
 check("пресет заполнил поля", $("loc-name").value === "Сочи" && $("loc-lat").value === "43.5855" && $("loc-lon").value === "39.7231");
 $("loc-apply").handlers.click();
-check("пресет применён", A.getLocation().name === "Сочи");
+check("пресет применён", A.getLocation().name === "Сочи" && A.getLocation().bortle === 6);
 check("панель закрылась после применения", $("loc-panel").classList.contains("hidden"));
 check("шапка обновилась", /Сочи/.test($("site-info").innerHTML) && /43,6° N/.test($("site-info").innerHTML));
 check("подвал обновился", /Сочи/.test($("foot-site").textContent));
