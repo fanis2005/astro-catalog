@@ -454,7 +454,7 @@ a:hover { text-decoration: underline; }
 
 .cond-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
 
-.cond-name { color: var(--dim); width: 74px; flex: none; }
+.cond-name { color: var(--dim); width: 92px; flex: none; }
 
 .cond-val { flex: 1; }
 

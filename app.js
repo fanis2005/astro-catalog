@@ -387,16 +387,26 @@
     const darkFrac = st.pts.length ? st.pts.filter((p) => p.dark).length / st.pts.length : 0;
     const darkScore = clamp(darkFrac * 100, 0, 100);
     const wScore = weatherScore(weather);
+    const seeingScore = weather && Number.isFinite(weather.seeing)
+      ? clamp(((8 - weather.seeing) / 7) * 100, 0, 100) : null;
+    const transpScore = weather && Number.isFinite(weather.transparency)
+      ? clamp(((8 - weather.transparency) / 7) * 100, 0, 100) : null;
     let total = null;
     if (wScore !== null) {
       total = wScore;
+      if (seeingScore !== null) total -= (100 - seeingScore) * 0.1;
+      if (transpScore !== null) total -= (100 - transpScore) * 0.1;
       total -= (100 - bortleScore) * 0.35;
       total -= (100 - mn.score) * 0.25;
       total -= (100 - darkScore) * 0.25;
       total -= (100 - altScore) * 0.15;
       total = clamp(Math.round(total), 0, 100);
     }
-    return { altScore, darkScore, moonScore: mn.score, bortleScore, weatherScore: wScore, total, moon, sep };
+    return {
+      altScore, darkScore, moonScore: mn.score, bortleScore, weatherScore: wScore,
+      seeingScore, transpScore, seeing: weather ? weather.seeing : null,
+      transparency: weather ? weather.transparency : null, total, moon, sep,
+    };
   }
 
   const scoreClass = (v) => (v >= 60 ? "good" : v >= 30 ? "mid" : "bad");
@@ -405,6 +415,7 @@
   const moonLabel = (v) => (v >= 60 ? "Не мешает" : v >= 40 ? "Слабо" : v >= 20 ? "Мешает" : "Сильно мешает");
   const bortleLabel = (v) => (v >= 70 ? "Тёмное небо" : v >= 40 ? "Пригород" : v >= 20 ? "Город" : "Сильная засветка");
   const weatherLabel = (v) => (v >= 80 ? "Ясно" : v >= 50 ? "Переменно" : v >= 20 ? "Облачно" : "Пасмурно");
+  const seeingLabel = (v) => (v >= 75 ? "Отлично" : v >= 50 ? "Хорошо" : v >= 25 ? "Средне" : "Плохо");
   const totalLabel = (v) => (v >= 80 ? "Отлично" : v >= 60 ? "Хорошо" : v >= 40 ? "Можно" : v >= 20 ? "Слабо" : "Нет смысла");
 
   function conditionsBlock(o, st, weather) {
@@ -416,6 +427,8 @@
       ["Луна", `${Math.round(ev.moon.illum * 100)}% · ${ev.sep.toFixed(0)}°`, ev.moonScore, moonLabel(ev.moonScore)],
       ["Засветка", `Bortle ${LOC.bortle}`, ev.bortleScore, bortleLabel(ev.bortleScore)],
       ["Погода", weather ? `облачность ${Math.round(weather.cloud)}%${hum}` : "нет данных", ev.weatherScore, ev.weatherScore === null ? "н/д" : weatherLabel(ev.weatherScore)],
+      ["Сиинг", Number.isFinite(ev.seeing) ? `${ev.seeing.toFixed(1)}/8` : "н/д", ev.seeingScore, ev.seeingScore === null ? "н/д" : seeingLabel(ev.seeingScore)],
+      ["Прозрачность", Number.isFinite(ev.transparency) ? `${ev.transparency.toFixed(1)}/8` : "н/д", ev.transpScore, ev.transpScore === null ? "н/д" : seeingLabel(ev.transpScore)],
     ];
     const totalTxt = ev.total === null ? "—/100" : `${ev.total}/100`;
     const totalCls = ev.total === null ? "" : scoreClass(ev.total);
@@ -489,6 +502,7 @@
         cloud: loc.cloud_cover, humidity: loc.relative_humidity_2m,
         dew: loc.dew_point_2m, temp: loc.temperature_2m, visibility: loc.visibility,
         wind10: loc.wind_speed_10m, wind120: loc.wind_speed_120m,
+        seeing: loc.seeing, transparency: loc.transparency,
         source: "weather.json",
       };
     });

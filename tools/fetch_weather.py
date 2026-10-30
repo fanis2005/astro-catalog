@@ -40,6 +40,50 @@ def fetch(lat, lon):
         return json.loads(r.read().decode())
 
 
+def fetch_7timer(lat, lon):
+    params = {
+        "lon": lon,
+        "lat": lat,
+        "ac": 0,
+        "unit": "metric",
+        "output": "json",
+        "tzshift": 0,
+    }
+    url = "https://www.7timer.info/bin/astro.php?" + urllib.parse.urlencode(params)
+    with urllib.request.urlopen(url, timeout=30) as r:
+        return json.loads(r.read().decode())
+
+
+def night_scores_7timer(j):
+    """Средние seeing/transparency (1 — отлично, 8 — плохо) на ближайшую ночь."""
+    try:
+        init = dt.datetime.strptime(j.get("init", ""), "%Y%m%d%H").replace(tzinfo=dt.timezone.utc)
+    except ValueError:
+        return None
+    now = dt.datetime.now(dt.timezone.utc)
+    start = now.replace(hour=15, minute=0, second=0, microsecond=0)
+    if now.hour < 3:
+        start -= dt.timedelta(days=1)
+    end = start + dt.timedelta(hours=12)
+    pts = []
+    for d in j.get("dataseries", []):
+        try:
+            t = init + dt.timedelta(hours=int(d.get("timepoint", 0)))
+        except (TypeError, ValueError):
+            continue
+        if start <= t <= end:
+            pts.append(d)
+    if not pts:
+        return None
+
+    def avg(key):
+        vals = [p[key] for p in pts if isinstance(p.get(key), (int, float))]
+        return round(sum(vals) / len(vals), 2) if vals else None
+
+    return {"seeing": avg("seeing"), "transparency": avg("transparency"), "cloud_7timer": avg("cloudcover")}
+
+
+
 def night_avg(j):
     h = j.get("hourly", {})
     times = h.get("time", [])
@@ -74,15 +118,28 @@ def main():
         "locations": [],
     }
     for name, lat, lon in LOCATIONS:
+        entry = None
         try:
             n = night_avg(fetch(lat, lon))
             if n:
-                out["locations"].append({"name": name, "lat": lat, "lon": lon, **n})
-                print("ok", name)
-            else:
-                print("empty", name)
+                entry = {"name": name, "lat": lat, "lon": lon, **n}
         except Exception as e:
-            print("skip", name, type(e).__name__, str(e)[:120])
+            print("open-meteo skip", name, type(e).__name__, str(e)[:100])
+        try:
+            s = night_scores_7timer(fetch_7timer(lat, lon))
+            if s:
+                if entry is None:
+                    entry = {"name": name, "lat": lat, "lon": lon}
+                entry.update(s)
+        except Exception as e:
+            print("7timer skip", name, type(e).__name__, str(e)[:100])
+        if entry:
+            if entry.get("cloud_cover") is None and entry.get("cloud_7timer") is not None:
+                entry["cloud_cover"] = round((entry["cloud_7timer"] - 1) / 8 * 100, 1)
+            out["locations"].append(entry)
+            print("ok", name, "seeing", entry.get("seeing"), "transparency", entry.get("transparency"))
+        else:
+            print("empty", name)
 
     base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     path = os.path.join(base, "data", "weather.json")
