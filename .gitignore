@@ -1,2 +1,4 @@
 ﻿_tmp_plan.json
 
+__pycache__/
+*.pyc

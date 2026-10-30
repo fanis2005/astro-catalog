@@ -479,6 +479,40 @@
     };
   }
 
+  function weatherFromStatic() {
+    return fetchJSON("data/weather.json", 5000).then((j) => {
+      const list = j.locations || [];
+      const loc = list.find((x) => Math.abs(+x.lat - LAT) < 0.05 && Math.abs(+x.lon - LON) < 0.05);
+      if (!loc) throw new Error("no location");
+      return {
+        lat: +loc.lat, lon: +loc.lon, time: Date.now(),
+        cloud: loc.cloud_cover, humidity: loc.relative_humidity_2m,
+        dew: loc.dew_point_2m, temp: loc.temperature_2m, visibility: loc.visibility,
+        wind10: loc.wind_speed_10m, wind120: loc.wind_speed_120m,
+        source: "weather.json",
+      };
+    });
+  }
+
+  function weatherFromLive() {
+    const om = `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}`
+      + "&hourly=cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,relative_humidity_2m,"
+      + "dew_point_2m,temperature_2m,visibility,wind_speed_10m,wind_speed_120m&timezone=auto&forecast_days=2";
+    const reqs = [
+      fetchJSON(om, 8000),
+      fetchJSON("https://api.allorigins.win/raw?url=" + encodeURIComponent(om), 15000),
+    ];
+    return Promise.allSettled(reqs).then((res) => {
+      for (const r of res) {
+        if (r.status === "fulfilled") {
+          const d = parseOpenMeteo(r.value);
+          if (d) return d;
+        }
+      }
+      return null;
+    });
+  }
+
   function loadWeather(cb) {
     if (typeof fetch !== "function") { cb(null); return; }
     try {
@@ -487,19 +521,10 @@
         cb(c); return;
       }
     } catch { /* ignore */ }
-    const om = `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}`
-      + "&hourly=cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,relative_humidity_2m,"
-      + "dew_point_2m,temperature_2m,visibility,wind_speed_10m,wind_speed_120m&timezone=auto&forecast_days=2";
-    const sources = [
-      () => fetchJSON(om, 8000),
-      () => fetchJSON("https://api.allorigins.win/raw?url=" + encodeURIComponent(om), 15000),
-    ];
-    Promise.any(sources.map((f) => f().then((j) => {
-      const d = parseOpenMeteo(j);
-      if (!d) throw new Error("empty");
-      return d;
-    })))
+    weatherFromStatic()
+      .catch(() => weatherFromLive())
       .then((data) => {
+        if (!data) { cb(null); return; }
         try { localStorage.setItem(WEATHER_KEY, JSON.stringify(data)); } catch { /* ignore */ }
         cb(data);
       })
