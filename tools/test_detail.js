@@ -79,6 +79,8 @@ console.log("заполнение: M31", A.frameFill(m31).toFixed(0) + "%", "| N
 
 const ns = A.nightStats(m31);
 console.log("ночь M31: макс.", ns.maxAlt.toFixed(0) + "°", "| окно > 30°:", ns.winStart ? "есть" : "нет");
+console.log("Bortle по SQM: 19.5 →", A.sqmToBortle(19.5), "| 21.8 →", A.sqmToBortle(21.8), "| 17.2 →", A.sqmToBortle(17.2));
+if (A.sqmToBortle(19.5) !== 5 || A.sqmToBortle(21.8) !== 1 || A.sqmToBortle(17.2) !== 9) process.exit(1);
 const mchart = created.find((e) => e.className === "months-chart");
 console.log("график месяцев:", !!mchart && /mchart-line/.test(mchart.innerHTML) && /mchart-dot/.test(mchart.innerHTML));
 const ev = A.evalObject(m31, ns, { cloud: 0 });

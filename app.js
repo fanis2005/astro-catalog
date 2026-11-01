@@ -9,6 +9,7 @@
 
   // ---------- локация ----------
   const LOC_KEY = "astro-location";
+  const LPM_KEY = "9pe4TTzhGYVWgEYg";
   const DEFAULT_LOCATION = { name: "Москва/Подмосковье", lat: data.lat, lon: data.lon, bortle: 8 };
   const PRESETS = [
     { name: "Москва/Подмосковье", lat: 55.8, lon: 38.2167, bortle: 8 },
@@ -205,13 +206,17 @@
     updateSiteText();
     renderMoon();
     render();
+    updateBortle();
     return true;
   }
 
   function updateSiteText() {
     const coords = `${fmtLat(LAT)}, ${fmtLon(LON)}`;
+    const b = LOC.bortle
+      ? ` · Bortle ${LOC.bortle}${Number.isFinite(LOC.sqm) ? ` (SQM ${LOC.sqm.toFixed(1)})` : ""}`
+      : "";
     const info = document.getElementById("site-info");
-    if (info) info.innerHTML = `Локация: <b>${esc(LOC.name)}</b> · ${coords}`;
+    if (info) info.innerHTML = `Локация: <b>${esc(LOC.name)}</b> · ${coords}${b}`;
     const foot = document.getElementById("foot-site");
     if (foot) foot.textContent = `${LOC.name} (${coords})`;
   }
@@ -547,6 +552,71 @@
         cb(data);
       })
       .catch(() => cb(null));
+  }
+
+  // ---------- Bortle по World Atlas 2015 (Light Pollution Map) ----------
+  const BORTLE_KEY = "astro-bortle";
+
+  function fetchText(url, ms) {
+    const ctrl = typeof AbortController === "function" ? new AbortController() : null;
+    const timer = ctrl ? setTimeout(() => ctrl.abort(), ms) : null;
+    const init = ctrl ? { signal: ctrl.signal } : {};
+    return fetch(url, init)
+      .then((r) => { if (!r.ok) throw new Error(String(r.status)); return r.text(); })
+      .finally(() => { if (timer) clearTimeout(timer); });
+  }
+
+  function sqmToBortle(sqm) {
+    if (sqm >= 21.7) return 1;
+    if (sqm >= 21.5) return 2;
+    if (sqm >= 21.3) return 3;
+    if (sqm >= 20.4) return 4;
+    if (sqm >= 19.1) return 5;
+    if (sqm >= 18.5) return 6;
+    if (sqm >= 18.0) return 7;
+    if (sqm >= 17.5) return 8;
+    return 9;
+  }
+
+  function fetchBortle(lat, lon) {
+    const url = `https://www.lightpollutionmap.info/api/queryraster?key=${LPM_KEY}`
+      + `&ql=wa_2015&qt=point&qd=${lon},${lat}`;
+    return fetchText(url, 8000).then((t) => {
+      const v = parseFloat(String(t).replace(",", "."));
+      if (!Number.isFinite(v)) throw new Error("bad value");
+      const total = v + 0.171168465;
+      const sqm = Math.log10(total / 108000000) / -0.4;
+      return { sqm: Math.round(sqm * 100) / 100, bortle: sqmToBortle(sqm) };
+    });
+  }
+
+  function applyBortle(b, sqm) {
+    if (!Number.isFinite(b)) return;
+    if (LOC.bortle === b && LOC.sqm === sqm) return;
+    LOC.bortle = b;
+    LOC.sqm = sqm;
+    try { localStorage.setItem(LOC_KEY, JSON.stringify(LOC)); } catch { /* ignore */ }
+    updateSiteText();
+    render();
+  }
+
+  function updateBortle() {
+    try {
+      const c = JSON.parse(localStorage.getItem(BORTLE_KEY) || "null");
+      if (c && Math.abs(c.lat - LAT) < 0.01 && Math.abs(c.lon - LON) < 0.01 && Date.now() - c.time < 30 * 86400000) {
+        applyBortle(c.bortle, c.sqm);
+        return;
+      }
+    } catch { /* ignore */ }
+    if (typeof fetch !== "function") return;
+    fetchBortle(LAT, LON).then((r) => {
+      try {
+        localStorage.setItem(BORTLE_KEY, JSON.stringify({
+          lat: LAT, lon: LON, time: Date.now(), bortle: r.bortle, sqm: r.sqm,
+        }));
+      } catch { /* ignore */ }
+      applyBortle(r.bortle, r.sqm);
+    }).catch(() => { /* остаётся ручной Bortle */ });
   }
 
   function monthsChart(o) {
@@ -1214,6 +1284,7 @@
     updateSiteText();
     renderMoon();
     render();
+    updateBortle();
   }
 
   if (sessionStorage.getItem(AUTH_KEY) === "ok") {
@@ -1253,7 +1324,7 @@
 
   window.__astro = {
     ninaBuild, moonInfo, sunAlt, nightWindow, objectWindow, planStore, openDetail,
-    applyLocation, monthsFor, frameFill, nightStats, evalObject,
+    applyLocation, monthsFor, frameFill, nightStats, evalObject, sqmToBortle, fetchBortle,
     getLocation: () => ({ ...LOC }),
   };
 })();
