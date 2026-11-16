@@ -1058,7 +1058,7 @@
 
     // ---------- калибровка ----------
     const FLAT_COUNT = 30;
-    const DARK_COUNT = 20;
+    const DARK_COUNT = FLAT_COUNT; // всегда столько же дарков, сколько флэтов
     const usedFilters = [...new Set(slots.map((s) => FILTER_NAME[s.o.filter] || "SV260"))];
     const usedExps = [...new Set(slots.map((s) => FILTER_EXP[FILTER_NAME[s.o.filter] || "SV260"] || 120))];
 
