@@ -71,3 +71,12 @@ git add -A && git commit -m "обновление" && git push
 ## Источники превью
 
 Изображения объектов — Wikipedia/Wikimedia Commons (свободные лицензии), часть — собственные снимки.
+
+## Лицензия
+
+Двойная лицензия — на выбор:
+
+- [MIT License](LICENSE-MIT)
+- [The Unlicense](LICENSE-UNLICENSE) — public domain
+
+Подробнее — [LICENSE](LICENSE).
